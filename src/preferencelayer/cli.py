@@ -2,10 +2,11 @@
 
 Subcommands:
 
-* ``demo``       — run an end-to-end PTP lifecycle (create, authorize, read,
-                   update, elicit) and print each step.
-* ``experiment`` — run the Phase 0 cross-category transfer benchmark.
-* ``view``       — summarize a saved credential store.
+* ``demo``           — run an end-to-end PTP lifecycle (create, authorize, read,
+                       update, elicit) and print each step.
+* ``experiment``     — run the Phase 0 cross-category transfer benchmark (Claim 1).
+* ``qil-experiment`` — run the Phase 0 QIL extraction feasibility study (Claim 2).
+* ``view``           — summarize a saved credential store.
 """
 
 from __future__ import annotations
@@ -100,6 +101,32 @@ def _experiment(args) -> int:
     return 0
 
 
+def _qil_experiment(args) -> int:
+    from .qil import QILExtractor, QualityAggregator, QualityService, corpus as corpus_mod, evaluate
+    from .qil.eval import GATE_PRECISION
+
+    cp = corpus_mod.generate(n_train=args.train, n_test=args.test, seed=args.seed)
+    ex = QILExtractor().fit(cp.train)
+    report = evaluate([s.use_profile for s in cp.test], ex.predict_use_profiles(cp.test))
+    for m in sorted(report.per_class, key=lambda m: -m.support):
+        print(f"{m.label:<16} precision={m.precision:.3f} recall={m.recall:.3f} (n={m.support})")
+    print(f"\nmacro precision={report.macro_precision:.3f}  baseline(mfc)={report.baseline_precision:.3f}")
+    status = "PASS" if report.gate_pass else "FAIL"
+    print(f"Phase 0 QIL gate (>= {GATE_PRECISION:.0%}): {status}")
+
+    # Show the aggregation + query layer on the extracted signals.
+    svc = QualityService(QualityAggregator().fit(ex.extract(cp.train + cp.test)))
+    cat0 = list(cp.products)[0]
+    pa, pb = cp.products[cat0][0], cp.products[cat0][1]
+    q = svc.quality(pa, "gaming")
+    print(f"\n/quality {pa} (gaming): failure_rate={q.get('failure_rate')} "
+          f"dims={list(q.get('dimensions', {}))}")
+    c = svc.compare(pa, pb, "gaming")
+    if c["status"] == 200:
+        print(f"/compare {pa} vs {pb}: {c['dimensions']}")
+    return 0 if report.gate_pass else 1
+
+
 def _view(args) -> int:
     from .ptp import CredentialStore, new_user_keypair
 
@@ -113,9 +140,13 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("demo", help="Run an end-to-end PTP lifecycle demo.")
-    exp = sub.add_parser("experiment", help="Run the Phase 0 transfer benchmark.")
+    exp = sub.add_parser("experiment", help="Run the Phase 0 transfer benchmark (Claim 1).")
     exp.add_argument("--users", type=int, default=400)
     exp.add_argument("--seed", type=int, default=7)
+    qil = sub.add_parser("qil-experiment", help="Run the Phase 0 QIL feasibility study (Claim 2).")
+    qil.add_argument("--train", type=int, default=1400)
+    qil.add_argument("--test", type=int, default=400)
+    qil.add_argument("--seed", type=int, default=17)
     sub.add_parser("view", help="Summarize a saved credential store.")
 
     args = parser.parse_args(argv)
@@ -123,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return _demo()
     if args.command == "experiment":
         return _experiment(args)
+    if args.command == "qil-experiment":
+        return _qil_experiment(args)
     if args.command == "view":
         return _view(args)
     return 1

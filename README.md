@@ -40,11 +40,13 @@ preferencelayer/
 │   ├── eval/                  # NDCG metrics + transfer evaluation harness
 │   ├── ptp/                   # PTP: credential, store, DP update (reference impl)
 │   ├── mcp/                   # PTP MCP server (agent tool bindings)
+│   ├── qil/                   # QIL: extraction, Bayesian aggregation, query + MCP
 │   └── cli.py                 # `preflayer` command-line interface
 │
 ├── experiments/
-│   ├── run_phase0.py          # Headline cross-category transfer experiment
-│   └── phase0_results.json    # Saved metrics for the headline run
+│   ├── run_phase0.py          # Claim 1: cross-category transfer experiment
+│   ├── run_phase0_qil.py      # Claim 2: QIL extraction feasibility study
+│   └── *.json                 # Saved metrics for the headline runs
 │
 ├── tests/                     # Test suite (incl. the Phase 0 go/no-go gate)
 │
@@ -53,26 +55,33 @@ preferencelayer/
     ├── implementation-plan.md # Full phased build plan
     ├── architecture.md        # System architecture reference
     ├── protocol-spec.md       # PTP protocol specification (draft)
-    └── phase0-results.md      # Phase 0 research report (results below)
+    ├── phase0-results.md      # Phase 0 Claim 1 report (preference graph)
+    └── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
 ```
 
 ---
 
 ## Status
 
-**Phase 0 prototype — core claim validated.** The repository now contains a working,
-tested implementation of the Phase 0 research prototype alongside the design docs.
+**Phase 0 prototype — both research gates passed.** The repository contains a
+working, tested implementation of the Phase 0 research prototype alongside the
+design docs.
 
-The headline result: the **sparse DAG preference graph beats the strong flat-vector
-baseline by +9.7% NDCG@10 on cross-category transfer** (laptops → headphones,
-p = 0.0002), robust across seeds — clearing the Phase 0 go/no-go gate (≥ 5%). Full
-methodology, ablations, and honesty notes are in
-[`docs/phase0-results.md`](docs/phase0-results.md).
+- **Claim 1 (preference graph):** the **sparse DAG preference graph beats the strong
+  flat-vector baseline by +9.7% NDCG@10 on cross-category transfer** (laptops →
+  headphones, p = 0.0002), robust across seeds — clearing the ≥ 5% gate. See
+  [`docs/phase0-results.md`](docs/phase0-results.md).
+- **Claim 2 (QIL extraction):** use-profile-conditioned quality signals are
+  extracted from unstructured text at **88.3% macro precision** (vs. a 24.2%
+  baseline), clearing the ≥ 70% gate. See
+  [`docs/phase0-qil-results.md`](docs/phase0-qil-results.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
 user-controlled **credential store** (agent auth, scoping, elicitation, encrypted at
-rest), and a **PTP MCP server** exposing the three operations as agent tools.
+rest), a **PTP MCP server**, and the **QIL pipeline** (TF-IDF + softmax extraction,
+Beta-Binomial / Normal-Normal aggregation, `/quality` + `/compare`, and a QIL MCP
+server).
 
 ---
 
@@ -82,7 +91,8 @@ rest), and a **PTP MCP server** exposing the three operations as agent tools.
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-python experiments/run_phase0.py --users 500   # run the headline experiment + gate
+python experiments/run_phase0.py --users 500   # Claim 1: transfer experiment + gate
+python experiments/run_phase0_qil.py           # Claim 2: QIL extraction + gate
 python -m preferencelayer.cli demo             # end-to-end PTP credential lifecycle
 python -m pytest                               # full test suite
 ```
@@ -94,7 +104,8 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 
 ## Quick Links
 
-- [Phase 0 Results](docs/phase0-results.md)
+- [Phase 0 Results — Claim 1 (Preference Graph)](docs/phase0-results.md)
+- [Phase 0 Results — Claim 2 (QIL Extraction)](docs/phase0-qil-results.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)
