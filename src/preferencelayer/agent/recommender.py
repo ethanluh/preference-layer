@@ -29,6 +29,9 @@ from ..qil.query import QualityService
 from ..qil.schema import QUALITY_DIMS
 from . import combine
 
+# The quality dimensions requested on every /quality call (invariant; built once).
+_ALL_DIMS = list(QUALITY_DIMS)
+
 
 @dataclass
 class BlendResult:
@@ -89,7 +92,7 @@ class AgentRecommender:
         """Preference utility per candidate, from the fitted preference model."""
         return self.pref_model.score(self.pref_state, candidate_attrs, self.n_shared)
 
-    def _query_quality(self, candidate_ids: list[str], use_profile: str) -> tuple[np.ndarray, np.ndarray]:
+    def query_quality(self, candidate_ids: list[str], use_profile: str) -> tuple[np.ndarray, np.ndarray]:
         """One pass over the QIL ``/quality`` endpoint, returning (scores, evidence).
 
         Issues a single ``quality()`` call per candidate and derives both signals the
@@ -97,12 +100,13 @@ class AgentRecommender:
         an optional ``failure_penalty * failure_rate``, falling back to
         ``neutral_quality`` when the QIL has no evidence) and the quality *evidence*
         (mean ``evidence_count`` across those dimensions; 0 when unevidenced). Sharing
-        the pass avoids querying the same products twice in evidence-aware ranking.
+        the pass avoids querying the same products twice in evidence-aware ranking;
+        evaluation harnesses call it directly to blend several α's off one query.
         """
         scores = np.empty(len(candidate_ids))
         evidence = np.zeros(len(candidate_ids))
         for i, pid in enumerate(candidate_ids):
-            res = self.quality_service.quality(pid, use_profile, dimensions=list(QUALITY_DIMS))
+            res = self.quality_service.quality(pid, use_profile, dimensions=_ALL_DIMS)
             dims = res.get("dimensions") if res.get("status") == 200 else None
             if not dims:
                 scores[i] = self.neutral_quality
@@ -116,7 +120,7 @@ class AgentRecommender:
 
     def quality_scores(self, candidate_ids: list[str], use_profile: str) -> np.ndarray:
         """Aggregate quality per candidate (mean posterior, optional failure discount)."""
-        return self._query_quality(candidate_ids, use_profile)[0]
+        return self.query_quality(candidate_ids, use_profile)[0]
 
     def quality_evidence(self, candidate_ids: list[str], use_profile: str) -> np.ndarray:
         """Per-candidate quality evidence (mean ``evidence_count``; 0 if unevidenced).
@@ -125,7 +129,7 @@ class AgentRecommender:
         evidence has an unreliable quality estimate, so the agent should lean on
         preference for it.
         """
-        return self._query_quality(candidate_ids, use_profile)[1]
+        return self.query_quality(candidate_ids, use_profile)[1]
 
     # ------------------------------------------------------------------- ranking
     def rank(
@@ -153,7 +157,7 @@ class AgentRecommender:
           (:func:`combine.alpha_from_confidence`).
         """
         pref = self.preference_scores(candidate_attrs)
-        quality, evidence = self._query_quality(candidate_ids, use_profile)
+        quality, evidence = self.query_quality(candidate_ids, use_profile)
         if alpha is not None:
             a: float | np.ndarray = float(alpha)
         elif evidence_aware:

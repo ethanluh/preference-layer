@@ -35,10 +35,10 @@ import numpy as np
 from ..data.integrated import IntegratedScenario
 from ..eval import metrics
 from ..eval.harness import _paired_bootstrap_p
-from ..models.graph import SparsePreferenceGraph
 from ..qil.aggregate import QualityAggregator
 from ..qil.query import QualityService
 from . import combine
+from ._harness import prepare_preference_model
 from .recommender import AgentRecommender
 
 # The 2×2 cells: (name, raw_estimator?, evidence_aware_alpha?).
@@ -102,15 +102,7 @@ class QualityHandlingHarness:
         self.obs_noise = obs_noise
 
     def run(self) -> QualityHandlingResult:
-        idx = self.s.product_index()
-        n_shared = self.s.schema.n_shared
-        _, catalog = self.s.catalog_matrix()
-
-        per_user_purchased = [
-            np.stack([idx[pid].attributes for pid in u.purchases]) for u in self.s.users
-        ]
-        model = SparsePreferenceGraph(cold_start_pivot=4, seed=self.seed)
-        model.prepare(catalog, per_user_purchased, n_shared)
+        model, idx, catalog, n_shared = prepare_preference_model(self.s, seed=self.seed)
 
         # Two estimators over the *same* extracted signals: shipped shrinkage vs raw.
         shrunk = QualityService(QualityAggregator().fit(self.s.signals))
@@ -134,8 +126,8 @@ class QualityHandlingHarness:
             # re-blend, avoiding repeated /quality queries and pref recomputation.
             pref = agent_shrunk.preference_scores(cand_attrs)
             streams = {
-                False: agent_shrunk._query_quality(cand_ids, u.use_profile),  # shrunk
-                True: agent_raw._query_quality(cand_ids, u.use_profile),      # raw
+                False: agent_shrunk.query_quality(cand_ids, u.use_profile),  # shrunk
+                True: agent_raw.query_quality(cand_ids, u.use_profile),      # raw
             }
 
             def ndcg(quality: np.ndarray, alpha) -> float:
