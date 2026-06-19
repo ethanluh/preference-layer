@@ -63,7 +63,8 @@ preferencelayer/
     ├── phase1-integration-results.md  # Integration report (α-blend)
     ├── phase1-quality-robustness-results.md  # Quality handling (shrinkage vs. raw)
     ├── phase1-protocol-integration.md  # End-to-end over the PTP + QIL MCP tools
-    └── phase1-cold-start-results.md  # Adaptive α in the zero-history regime
+    ├── phase1-cold-start-results.md  # Adaptive α in the zero-history regime
+    └── phase1-amazon-realdata.md  # Real-data reality check (Amazon Reviews 2023)
 ```
 
 ---
@@ -110,6 +111,12 @@ research prototype alongside the design docs.
   documented sigmoid α still only **ties** a fixed blend even here (+0.014, p=0.31) —
   z-scoring already lets the fixed blend lean on the informative signal. See
   [`docs/phase1-cold-start-results.md`](docs/phase1-cold-start-results.md).
+- **Real-data reality check (Amazon Reviews 2023):** running the same models on real
+  items/users with **coarse metadata-derived attributes**, the graph's synthetic
+  advantage **does not replicate** (−20.8% vs flat) and all attribute models are weak —
+  locating the bottleneck at **attribute-extraction quality** (the QIL NLP pipeline,
+  Phase 1), not the ranking model. An honest negative. See
+  [`docs/phase1-amazon-realdata.md`](docs/phase1-amazon-realdata.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
@@ -137,8 +144,9 @@ python experiments/run_phase1_cold_start.py    # adaptive α in the zero-history
 python -m pytest                               # full test suite
 ```
 
-The Amazon Reviews 2023 real-data path needs the optional extra:
-`pip install -e ".[amazon]"` (see `src/preferencelayer/data/amazon.py`).
+The Amazon Reviews 2023 real-data path needs the optional extra and network access:
+`pip install -e ".[amazon]"`, then `python experiments/run_amazon_realdata.py` (see
+[`docs/phase1-amazon-realdata.md`](docs/phase1-amazon-realdata.md)).
 
 ---
 
@@ -150,6 +158,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 - [Phase 1 Quality Handling — Shrinkage vs. Raw Averaging](docs/phase1-quality-robustness-results.md)
 - [Phase 1 Protocol Integration — PTP + QIL over MCP](docs/phase1-protocol-integration.md)
 - [Phase 1 Cold-Start — Adaptive α in the Zero-History Regime](docs/phase1-cold-start-results.md)
+- [Phase 1 Real-Data Reality Check — Amazon Reviews 2023](docs/phase1-amazon-realdata.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)

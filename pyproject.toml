@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
-amazon = ["datasets>=2.14"]  # only needed to ingest the real Amazon Reviews 2023 corpus
+amazon = ["pandas>=1.5", "pyarrow>=12", "huggingface_hub>=0.20"]  # ingest the real Amazon Reviews 2023 corpus (Parquet + benchmark CSV)
 mcp = ["mcp>=1.0"]           # only needed to run the live MCP server
 
 [project.scripts]
