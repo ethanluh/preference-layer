@@ -12,8 +12,6 @@ license = { file = "LICENCE.md" }
 authors = [{ name = "PreferenceLayer Contributors" }]
 dependencies = [
     "numpy>=1.24",
-    "scipy>=1.10",
-    "scikit-learn>=1.3",
     "pynacl>=1.5",
 ]
 
