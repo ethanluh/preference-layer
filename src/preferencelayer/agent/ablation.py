@@ -38,6 +38,7 @@ from ..eval.harness import _paired_bootstrap_p
 from ..models.graph import SparsePreferenceGraph
 from ..qil.aggregate import QualityAggregator
 from ..qil.query import QualityService
+from . import combine
 from .recommender import AgentRecommender
 
 # The 2×2 cells: (name, raw_estimator?, evidence_aware_alpha?).
@@ -128,19 +129,33 @@ class QualityHandlingHarness:
             cand_attrs = np.stack([idx[c].attributes for c in cand_ids])
             relevant = set(u.relevant)
 
-            def ndcg(agent: AgentRecommender, **kw) -> float:
-                res = agent.rank(cand_ids, cand_attrs, u.use_profile, u.mean_confidence, **kw)
-                return metrics.ndcg_at_k([cand_ids[i] for i in res.order], relevant, self.k)
+            # Compute each stream once: preference is estimator-independent; quality
+            # and evidence are fetched once per estimator. Every cell is then just a
+            # re-blend, avoiding repeated /quality queries and pref recomputation.
+            pref = agent_shrunk.preference_scores(cand_attrs)
+            streams = {
+                False: agent_shrunk._query_quality(cand_ids, u.use_profile),  # shrunk
+                True: agent_raw._query_quality(cand_ids, u.use_profile),      # raw
+            }
+
+            def ndcg(quality: np.ndarray, alpha) -> float:
+                blended = combine.blend(pref, quality, alpha)
+                return metrics.ndcg_at_k([cand_ids[i] for i in np.argsort(-blended)], relevant, self.k)
 
             for name, raw_est, ev in _CELLS:
-                agent = agent_raw if raw_est else agent_shrunk
-                kw = (dict(evidence_aware=True, evidence_pivot=self.evidence_pivot,
-                           evidence_quality_weight=self.evidence_quality_weight)
-                      if ev else dict(alpha=0.5))
-                per_cell[name].append(ndcg(agent, **kw))
+                quality, evidence = streams[raw_est]
+                if ev:
+                    r_q = combine.quality_reliability(evidence, pivot=self.evidence_pivot)
+                    alpha = combine.evidence_adaptive_alpha(
+                        u.mean_confidence, r_q, quality_weight=self.evidence_quality_weight)
+                else:
+                    alpha = 0.5
+                per_cell[name].append(ndcg(quality, alpha))
 
-            ref["preference_only"].append(ndcg(agent_shrunk, alpha=1.0))
-            ref["quality_only"].append(ndcg(agent_shrunk, alpha=0.0))
+            # References (shrunk estimator): α=1 is pure preference, α=0 pure quality.
+            shrunk_quality = streams[False][0]
+            ref["preference_only"].append(ndcg(shrunk_quality, 1.0))
+            ref["quality_only"].append(ndcg(shrunk_quality, 0.0))
 
         def collect(name: str, vals: list[float]) -> CellResult:
             return CellResult(name, float(np.mean(vals)), float(np.std(vals)), vals)
