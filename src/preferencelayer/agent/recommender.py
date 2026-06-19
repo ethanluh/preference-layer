@@ -43,7 +43,7 @@ class BlendResult:
     blended: np.ndarray         # final blended score per candidate
     pref: np.ndarray            # raw preference score per candidate
     quality: np.ndarray         # raw quality score per candidate
-    alpha: float                # blend weight actually used
+    alpha: float | np.ndarray   # blend weight used (scalar, or per-candidate vector)
 
 
 class AgentRecommender:
@@ -110,6 +110,22 @@ class AgentRecommender:
             out[i] = score
         return out
 
+    def quality_evidence(self, candidate_ids: list[str], use_profile: str) -> np.ndarray:
+        """Per-candidate quality evidence, from the same ``/quality`` responses.
+
+        The mean ``evidence_count`` across a product's known quality dimensions;
+        0 for products the QIL has no evidence for. This is the signal the
+        evidence-aware blend keys on — a product with thin evidence has an
+        unreliable quality estimate, so the agent should lean on preference for it.
+        """
+        out = np.zeros(len(candidate_ids))
+        for i, pid in enumerate(candidate_ids):
+            res = self.quality_service.quality(pid, use_profile, dimensions=list(QUALITY_DIMS))
+            dims = res.get("dimensions") if res.get("status") == 200 else None
+            if dims:
+                out[i] = float(np.mean([d["evidence_count"] for d in dims.values()]))
+        return out
+
     # ------------------------------------------------------------------- ranking
     def rank(
         self,
@@ -119,17 +135,33 @@ class AgentRecommender:
         mean_confidence: float,
         *,
         alpha: float | None = None,
+        evidence_aware: bool = False,
+        evidence_pivot: float = 8.0,
+        evidence_quality_weight: float = 1.0,
     ) -> BlendResult:
-        """Rank candidates by the confidence-adaptive α-blend.
+        """Rank candidates by the α-blend.
 
-        ``alpha`` defaults to the documented confidence-adaptive value; pass an
-        explicit value to force a fixed blend (the evaluation harness uses
-        ``alpha=1`` for preference-only, ``0`` for quality-only, ``0.5`` for a
-        fixed blend).
+        Three weighting modes:
+
+        * ``alpha`` given — a fixed blend (the harness uses ``1`` for
+          preference-only, ``0`` for quality-only, ``0.5`` for a fixed blend);
+        * ``evidence_aware=True`` — a *per-candidate* α from credential confidence
+          **and** each product's quality evidence (:func:`combine.evidence_adaptive_alpha`),
+          leaning on preference where quality evidence is thin;
+        * otherwise — the documented confidence-only adaptive α
+          (:func:`combine.alpha_from_confidence`).
         """
         pref = self.preference_scores(candidate_attrs)
         quality = self.quality_scores(candidate_ids, use_profile)
-        a = combine.alpha_from_confidence(mean_confidence) if alpha is None else float(alpha)
+        if alpha is not None:
+            a: float | np.ndarray = float(alpha)
+        elif evidence_aware:
+            r_q = combine.quality_reliability(
+                self.quality_evidence(candidate_ids, use_profile), pivot=evidence_pivot)
+            a = combine.evidence_adaptive_alpha(
+                mean_confidence, r_q, quality_weight=evidence_quality_weight)
+        else:
+            a = combine.alpha_from_confidence(mean_confidence)
         blended = combine.blend(pref, quality, a)
         order = list(np.argsort(-blended))
         return BlendResult(order=order, blended=blended, pref=pref, quality=quality, alpha=a)

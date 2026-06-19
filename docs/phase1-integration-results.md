@@ -130,6 +130,14 @@ quality evidence** (lean on preference for products the QIL knows little about) 
 signals, rather than to credential confidence alone, is the natural Phase 1
 follow-up.
 
+> **Follow-up (resolved):** we built that *evidence-aware* α and tested it on a
+> non-uniform-evidence benchmark. It also does **not** beat a fixed α — because the
+> QIL aggregator's Bayesian shrinkage and the blend's z-scoring already absorb
+> unreliable evidence, making α-level adaptation redundant. The same investigation
+> did surface a genuine positive result about *quality estimation* (a shrinkage-vs-
+> raw-averaging noise crossover). See
+> [`phase1-quality-robustness-results.md`](phase1-quality-robustness-results.md).
+
 ---
 
 ## Why the result is meaningful (not rigged)

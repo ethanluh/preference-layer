@@ -84,3 +84,34 @@ def test_failure_penalty_discounts_quality():
     base = AgentRecommender(model, state, svc, 3, failure_penalty=0.0)
     penalized = AgentRecommender(model, state, svc, 3, failure_penalty=1.0)
     assert penalized.quality_scores(["p"], "gaming")[0] < base.quality_scores(["p"], "gaming")[0]
+
+
+def _service_varied(counts: dict[str, int]) -> QualityService:
+    """Build a service where each product gets a chosen number of observations."""
+    sigs = []
+    for pid, n in counts.items():
+        for _ in range(n):
+            for dim in ("thermal", "build_quality"):
+                sigs.append(ExtractedSignal(pid, "laptops", "gaming", "performance", None, dim, 0.6, 0.9))
+    return QualityService(QualityAggregator().fit(sigs))
+
+
+def test_quality_evidence_counts_per_candidate():
+    model = _DotModel()
+    state = model.fit(None, np.zeros((1, 3)), 3)
+    agent = AgentRecommender(model, state, _service_varied({"rich": 20, "thin": 1}), 3)
+    ev = agent.quality_evidence(["rich", "thin", "missing"], "gaming")
+    assert ev[0] == 20 and ev[1] == 1
+    assert ev[2] == 0.0                 # no evidence for unseen products
+    assert ev[0] > ev[1] > ev[2]
+
+
+def test_evidence_aware_alpha_is_per_candidate_and_higher_when_thin():
+    model = _DotModel()
+    state = model.fit(None, np.zeros((1, 3)), 3)
+    agent = AgentRecommender(model, state, _service_varied({"rich": 30, "thin": 1}), 3)
+    attrs = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+    res = agent.rank(["rich", "thin"], attrs, "gaming", mean_confidence=0.5, evidence_aware=True)
+    assert isinstance(res.alpha, np.ndarray) and res.alpha.shape == (2,)
+    # The thin-evidence product leans harder on preference (higher α).
+    assert res.alpha[1] > res.alpha[0]

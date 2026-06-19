@@ -17,6 +17,11 @@ ranking products needs both, combined by the confidence-adaptive α-blend from
 """
 
 from . import combine
+from .ablation import (
+    CellResult,
+    QualityHandlingHarness,
+    QualityHandlingResult,
+)
 from .evaluate import (
     CohortBreakdown,
     ConditionResult,
@@ -33,4 +38,7 @@ __all__ = [
     "IntegrationReport",
     "ConditionResult",
     "CohortBreakdown",
+    "QualityHandlingHarness",
+    "QualityHandlingResult",
+    "CellResult",
 ]

@@ -53,3 +53,34 @@ def test_blend_orders_between_the_two_rankings():
     top_qual = np.argmax(combine.blend(pref, quality, 0.1))
     assert top_pref == 0
     assert top_qual == 1
+
+
+# ---------------------------------------------------------- evidence-aware α
+def test_quality_reliability_monotonic_and_bounded():
+    e = np.array([0.0, 1.0, 5.0, 20.0, 1000.0])
+    r = combine.quality_reliability(e, pivot=8.0)
+    assert r[0] == 0.0
+    assert np.all((r >= 0.0) & (r < 1.0))
+    assert np.all(np.diff(r) > 0)          # rises with evidence
+    assert r[-1] > 0.99                    # saturates toward 1
+
+
+def test_evidence_adaptive_alpha_leans_preference_when_evidence_thin():
+    # No quality evidence -> pure preference; rich evidence -> below 1 (uses quality).
+    a_thin = combine.evidence_adaptive_alpha(0.5, 0.0)
+    a_rich = combine.evidence_adaptive_alpha(0.5, 0.9)
+    assert a_thin > 0.999          # ~1.0 (a tiny epsilon guards the division)
+    assert a_rich < a_thin
+    # Vectorized + clipped into [0, 1].
+    a = combine.evidence_adaptive_alpha(0.5, np.array([0.0, 0.3, 0.9]))
+    assert a.shape == (3,)
+    assert np.all((a >= 0.0) & (a <= 1.0))
+    assert a[0] >= a[1] >= a[2]            # falls as quality reliability rises
+
+
+def test_blend_accepts_a_per_candidate_alpha_vector():
+    pref = np.array([1.0, -1.0, 0.5, 2.0])
+    quality = np.array([2.0, 0.0, -1.0, 1.0])
+    alpha = np.array([0.0, 1.0, 0.5, 0.25])
+    expected = alpha * combine.zscore(pref) + (1.0 - alpha) * combine.zscore(quality)
+    assert np.allclose(combine.blend(pref, quality, alpha), expected)

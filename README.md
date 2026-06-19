@@ -48,6 +48,7 @@ preferencelayer/
 │   ├── run_phase0.py          # Claim 1: cross-category transfer experiment
 │   ├── run_phase0_qil.py      # Claim 2: QIL extraction feasibility study
 │   ├── run_phase1_integration.py  # Integration: preference+quality α-blend benchmark
+│   ├── run_phase1_quality_robustness.py  # Quality handling: shrinkage vs. raw averaging
 │   └── *.json                 # Saved metrics for the headline runs
 │
 ├── tests/                     # Test suite (incl. the Phase 0 go/no-go gate)
@@ -59,7 +60,8 @@ preferencelayer/
     ├── protocol-spec.md       # PTP protocol specification (draft)
     ├── phase0-results.md      # Phase 0 Claim 1 report (preference graph)
     ├── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
-    └── phase1-integration-results.md  # Integration report (α-blend)
+    ├── phase1-integration-results.md  # Integration report (α-blend)
+    └── phase1-quality-robustness-results.md  # Quality handling (shrinkage vs. raw)
 ```
 
 ---
@@ -83,9 +85,15 @@ research prototype alongside the design docs.
   either layer alone by +39% / +134% NDCG@10** (p = 0.0002) on a benchmark where
   both signals are required. The *confidence-adaptive* α from the architecture is
   implemented and measured; honestly, it does **not** beat a fixed balanced blend
-  in this uniform-evidence regime (the optimal α is ~constant), which points the
-  next step at evidence-aware α. See
+  in this uniform-evidence regime (the optimal α is ~constant). See
   [`docs/phase1-integration-results.md`](docs/phase1-integration-results.md).
+- **Quality handling (shrinkage vs. raw):** following up on *why* adaptive α didn't
+  help, an estimator×blend ablation finds a clean **bias–variance crossover** —
+  raw averaging wins on clean review signals, but **Bayesian shrinkage is the
+  noise-robust choice and wins as signals get noisy** (the QIL's real regime), while
+  evidence-aware α stays redundant. Takeaway: combine both layers, use a fixed α,
+  and let the QIL's Bayesian aggregation absorb noisy evidence. See
+  [`docs/phase1-quality-robustness-results.md`](docs/phase1-quality-robustness-results.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
@@ -105,6 +113,7 @@ pip install -e ".[dev]"
 python experiments/run_phase0.py --users 500   # Claim 1: transfer experiment + gate
 python experiments/run_phase0_qil.py           # Claim 2: QIL extraction + gate
 python experiments/run_phase1_integration.py   # Integration: α-blend benchmark + milestone
+python experiments/run_phase1_quality_robustness.py  # Quality handling: shrinkage vs. raw
 python -m preferencelayer.cli demo             # end-to-end PTP credential lifecycle
 python -m preferencelayer.cli agent-demo       # preference+quality α-blend ranking
 python -m pytest                               # full test suite
@@ -120,6 +129,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 - [Phase 0 Results — Claim 1 (Preference Graph)](docs/phase0-results.md)
 - [Phase 0 Results — Claim 2 (QIL Extraction)](docs/phase0-qil-results.md)
 - [Phase 1 Integration Results — the α-Blend](docs/phase1-integration-results.md)
+- [Phase 1 Quality Handling — Shrinkage vs. Raw Averaging](docs/phase1-quality-robustness-results.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)
