@@ -1,0 +1,99 @@
+{
+  "config": {
+    "users": 300,
+    "seed": 23,
+    "quality_weight": 0.6
+  },
+  "conditions": {
+    "preference_only": {
+      "ndcg": 0.44236805123824446,
+      "ndcg_std": 0.20562758267054032,
+      "mean_alpha": null
+    },
+    "quality_only": {
+      "ndcg": 0.26234492760011435,
+      "ndcg_std": 0.13956592516827068,
+      "mean_alpha": null
+    },
+    "fixed_alpha": {
+      "ndcg": 0.6137734800205719,
+      "ndcg_std": 0.20451664127097804,
+      "mean_alpha": null
+    },
+    "adaptive_alpha": {
+      "ndcg": 0.5883263941133563,
+      "ndcg_std": 0.21667923081168888,
+      "mean_alpha": 0.5023469187469272
+    }
+  },
+  "cohorts": [
+    {
+      "cohort": "cold",
+      "n_users": 100,
+      "mean_confidence": 0.19361616161616158,
+      "by_condition": {
+        "preference_only": 0.3235782609800346,
+        "quality_only": 0.25651113306998957,
+        "fixed_alpha": 0.4581395165758532,
+        "adaptive_alpha": 0.4119936995884206
+      }
+    },
+    {
+      "cohort": "warm",
+      "n_users": 100,
+      "mean_confidence": 0.5193514669025506,
+      "by_condition": {
+        "preference_only": 0.49797128966511556,
+        "quality_only": 0.25071868176512235,
+        "fixed_alpha": 0.6487652366525712,
+        "adaptive_alpha": 0.6521526589910543
+      }
+    },
+    {
+      "cohort": "rich",
+      "n_users": 100,
+      "mean_confidence": 0.7921383244749852,
+      "by_condition": {
+        "preference_only": 0.5055546030695833,
+        "quality_only": 0.2798049679652312,
+        "fixed_alpha": 0.7344156868332914,
+        "adaptive_alpha": 0.7008328237605944
+      }
+    }
+  ],
+  "optimal_alpha": [
+    {
+      "cohort": "cold",
+      "mean_confidence": 0.19361616161616158,
+      "formula_alpha": 0.2851308104752109,
+      "optimal_alpha": 0.5
+    },
+    {
+      "cohort": "warm",
+      "mean_confidence": 0.5193514669025506,
+      "formula_alpha": 0.5145095252684659,
+      "optimal_alpha": 0.55
+    },
+    {
+      "cohort": "rich",
+      "mean_confidence": 0.7921383244749852,
+      "formula_alpha": 0.706078765058202,
+      "optimal_alpha": 0.55
+    }
+  ],
+  "comparisons": {
+    "preference_only": {
+      "abs_gain": 0.14595834287511184,
+      "p_value": 0.0002
+    },
+    "quality_only": {
+      "abs_gain": 0.32598146651324195,
+      "p_value": 0.0002
+    },
+    "fixed_alpha": {
+      "abs_gain": -0.02544708590721556,
+      "p_value": 0.0002
+    }
+  },
+  "milestone_pass": true
+}

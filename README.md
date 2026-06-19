@@ -41,11 +41,13 @@ preferencelayer/
 │   ├── ptp/                   # PTP: credential, store, DP update (reference impl)
 │   ├── mcp/                   # PTP MCP server (agent tool bindings)
 │   ├── qil/                   # QIL: extraction, Bayesian aggregation, query + MCP
+│   ├── agent/                 # Integration: the preference+quality α-blend agent
 │   └── cli.py                 # `preflayer` command-line interface
 │
 ├── experiments/
 │   ├── run_phase0.py          # Claim 1: cross-category transfer experiment
 │   ├── run_phase0_qil.py      # Claim 2: QIL extraction feasibility study
+│   ├── run_phase1_integration.py  # Integration: preference+quality α-blend benchmark
 │   └── *.json                 # Saved metrics for the headline runs
 │
 ├── tests/                     # Test suite (incl. the Phase 0 go/no-go gate)
@@ -56,16 +58,17 @@ preferencelayer/
     ├── architecture.md        # System architecture reference
     ├── protocol-spec.md       # PTP protocol specification (draft)
     ├── phase0-results.md      # Phase 0 Claim 1 report (preference graph)
-    └── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
+    ├── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
+    └── phase1-integration-results.md  # Integration report (α-blend)
 ```
 
 ---
 
 ## Status
 
-**Phase 0 prototype — both research gates passed.** The repository contains a
-working, tested implementation of the Phase 0 research prototype alongside the
-design docs.
+**Phase 0 complete (both research gates passed); Phase 1 integration
+demonstrated.** The repository contains a working, tested implementation of the
+research prototype alongside the design docs.
 
 - **Claim 1 (preference graph):** the **sparse DAG preference graph beats the strong
   flat-vector baseline by +9.7% NDCG@10 on cross-category transfer** (laptops →
@@ -75,13 +78,21 @@ design docs.
   extracted from unstructured text at **88.3% macro precision** (vs. a 24.2%
   baseline), clearing the ≥ 70% gate. See
   [`docs/phase0-qil-results.md`](docs/phase0-qil-results.md).
+- **Integration (the α-blend):** an agent that fuses portable preference with
+  use-profile quality — the documented `α·pref + (1−α)·quality` scoring — **beats
+  either layer alone by +39% / +134% NDCG@10** (p = 0.0002) on a benchmark where
+  both signals are required. The *confidence-adaptive* α from the architecture is
+  implemented and measured; honestly, it does **not** beat a fixed balanced blend
+  in this uniform-evidence regime (the optimal α is ~constant), which points the
+  next step at evidence-aware α. See
+  [`docs/phase1-integration-results.md`](docs/phase1-integration-results.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
 user-controlled **credential store** (agent auth, scoping, elicitation, encrypted at
-rest), a **PTP MCP server**, and the **QIL pipeline** (TF-IDF + softmax extraction,
+rest), a **PTP MCP server**, the **QIL pipeline** (TF-IDF + softmax extraction,
 Beta-Binomial / Normal-Normal aggregation, `/quality` + `/compare`, and a QIL MCP
-server).
+server), and the **agent integration layer** that combines them.
 
 ---
 
@@ -93,7 +104,9 @@ pip install -e ".[dev]"
 
 python experiments/run_phase0.py --users 500   # Claim 1: transfer experiment + gate
 python experiments/run_phase0_qil.py           # Claim 2: QIL extraction + gate
+python experiments/run_phase1_integration.py   # Integration: α-blend benchmark + milestone
 python -m preferencelayer.cli demo             # end-to-end PTP credential lifecycle
+python -m preferencelayer.cli agent-demo       # preference+quality α-blend ranking
 python -m pytest                               # full test suite
 ```
 
@@ -106,6 +119,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 
 - [Phase 0 Results — Claim 1 (Preference Graph)](docs/phase0-results.md)
 - [Phase 0 Results — Claim 2 (QIL Extraction)](docs/phase0-qil-results.md)
+- [Phase 1 Integration Results — the α-Blend](docs/phase1-integration-results.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)
