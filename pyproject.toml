@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "preferencelayer"
+version = "0.1.0"
+description = "Portable preference graph infrastructure for the open agent web (Phase 0 prototype)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENCE.md" }
+authors = [{ name = "PreferenceLayer Contributors" }]
+dependencies = [
+    "numpy>=1.24",
+    "pynacl>=1.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+amazon = ["datasets>=2.14"]  # only needed to ingest the real Amazon Reviews 2023 corpus
+mcp = ["mcp>=1.0"]           # only needed to run the live MCP server
+
+[project.scripts]
+preflayer = "preferencelayer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
