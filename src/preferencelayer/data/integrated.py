@@ -149,6 +149,8 @@ def generate(
     noise: float = 0.15,
     cold_start_pivot: int = 8,
     signals_per_cell: int = 14,
+    evidence_lo: int | None = None,
+    evidence_hi: int | None = None,
     signal_obs_noise: float = 0.10,
     signal_confidence: float = 0.85,
     seed: int = 23,
@@ -159,6 +161,17 @@ def generate(
     relative to attribute preference (kept a minority share so preference is the
     dominant — and, for rich users, well-estimated — driver). ``signals_per_cell``
     and ``signal_obs_noise`` control how sharply the QIL can estimate quality.
+
+    **Evidence uniformity.** By default every product gets ``signals_per_cell``
+    quality observations (a uniform-evidence world). Pass ``evidence_lo`` /
+    ``evidence_hi`` to instead draw each *product's* evidence count from
+    ``[evidence_lo, evidence_hi]`` — the realistic case where some products are
+    heavily reviewed and others barely. Evidence is drawn *independently* of true
+    quality, so it is a pure reliability signal, not a quality proxy. Thin-evidence
+    products get unreliable posteriors (the Normal-Normal aggregator shrinks them
+    toward the neutral prior), which is precisely what an *evidence-aware* α should
+    detect and route around by leaning on preference for those items. Setting
+    ``evidence_lo == evidence_hi`` recovers a uniform regime (the honest control).
     """
     rng = np.random.default_rng(seed)
     schema = AttributeSchema.for_category(category)
@@ -270,12 +283,16 @@ def generate(
     # queries genuine posteriors (the QIL extraction NLP step, validated in
     # Phase 0, is short-circuited here — we inject ExtractedSignal directly, the
     # same path the QIL query tests use).
+    non_uniform = evidence_lo is not None and evidence_hi is not None
     signals: list[ExtractedSignal] = []
     for prod in products:
+        # Evidence per product: uniform by default, or drawn per product when a
+        # range is given (independent of the product's true quality).
+        n_cell = int(rng.integers(evidence_lo, evidence_hi + 1)) if non_uniform else signals_per_cell
         for prof in use_profiles:
             for dim in QUALITY_DIMS:
                 mean = prod.quality[(prof, dim)]
-                for _ in range(signals_per_cell):
+                for _ in range(n_cell):
                     val = float(np.clip(rng.normal(mean, signal_obs_noise), 0.0, 1.0))
                     signals.append(ExtractedSignal(
                         product_id=prod.product_id, category=category, use_profile=prof,

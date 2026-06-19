@@ -46,6 +46,46 @@ def alpha_from_confidence(mean_confidence: float) -> float:
     return sigmoid(3.0 * (mean_confidence - 0.5))
 
 
+def quality_reliability(evidence_count, pivot: float = 8.0):
+    """How much to trust a quality estimate, from its evidence count.
+
+    Saturating reliability in [0, 1): ``evidence / (evidence + pivot)`` — 0 with no
+    evidence, rising toward 1 as observations accumulate. This mirrors the
+    cold-start blend weight the preference graph uses for *its* own evidence
+    (``models/graph.py``: ``lam = n / (n + pivot)``): a product the QIL has barely
+    seen yields an unreliable quality posterior (the Normal-Normal aggregator
+    shrinks it toward the neutral prior), exactly as a sparse purchase history
+    yields an unreliable preference fit. Accepts a scalar or an array.
+    """
+    e = np.asarray(evidence_count, dtype=float)
+    return e / (e + pivot)
+
+
+def evidence_adaptive_alpha(mean_confidence: float, quality_reliability, *, quality_weight: float = 1.0):
+    """Per-candidate blend weight from *both* reliabilities — the evidence-aware α.
+
+    A **generalization** of :func:`alpha_from_confidence`. The documented formula
+    keys α off credential confidence alone, implicitly assuming quality evidence is
+    uniformly available; in reality some products are heavily reviewed and others
+    barely, so the *quality* estimate's reliability varies per candidate. This
+    weights the two estimates by their reliabilities:
+
+        alpha = r_p / (r_p + quality_weight * r_q)
+
+    where ``r_p`` is preference reliability (credential confidence, per user) and
+    ``r_q`` is quality reliability (per candidate, from evidence). With no quality
+    evidence (``r_q -> 0``) α → 1 and the agent ranks on preference alone; as
+    evidence accumulates α falls toward quality, the more so when the credential is
+    weak. ``quality_weight`` calibrates how strongly quality, once well-evidenced,
+    pulls the blend. Accepts an array ``quality_reliability`` and returns an array
+    (one α per candidate); the result is clipped into [0, 1].
+    """
+    r_p = float(mean_confidence)
+    r_q = np.asarray(quality_reliability, dtype=float)
+    alpha = r_p / (r_p + quality_weight * r_q + 1e-9)
+    return np.clip(alpha, 0.0, 1.0)
+
+
 def zscore(scores: np.ndarray) -> np.ndarray:
     """Standardize a score stream to mean 0, unit std across the candidate set.
 
