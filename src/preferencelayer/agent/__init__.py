@@ -28,6 +28,12 @@ from .evaluate import (
     IntegrationHarness,
     IntegrationReport,
 )
+from .protocol import (
+    ProtocolAgent,
+    ProtocolRecommendation,
+    credential_from_arrays,
+    score_from_credential,
+)
 from .recommender import AgentRecommender, BlendResult
 
 __all__ = [
@@ -41,4 +47,8 @@ __all__ = [
     "QualityHandlingHarness",
     "QualityHandlingResult",
     "CellResult",
+    "ProtocolAgent",
+    "ProtocolRecommendation",
+    "score_from_credential",
+    "credential_from_arrays",
 ]

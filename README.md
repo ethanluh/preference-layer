@@ -61,7 +61,8 @@ preferencelayer/
     ├── phase0-results.md      # Phase 0 Claim 1 report (preference graph)
     ├── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
     ├── phase1-integration-results.md  # Integration report (α-blend)
-    └── phase1-quality-robustness-results.md  # Quality handling (shrinkage vs. raw)
+    ├── phase1-quality-robustness-results.md  # Quality handling (shrinkage vs. raw)
+    └── phase1-protocol-integration.md  # End-to-end over the PTP + QIL MCP tools
 ```
 
 ---
@@ -94,6 +95,13 @@ research prototype alongside the design docs.
   evidence-aware α stays redundant. Takeaway: combine both layers, use a fixed α,
   and let the QIL's Bayesian aggregation absorb noisy evidence. See
   [`docs/phase1-quality-robustness-results.md`](docs/phase1-quality-robustness-results.md).
+- **Protocol-level end-to-end:** an agent that ranks products using **only the real
+  PTP `get_preference` and QIL `get_quality` MCP tools** — reconstructing preference
+  from the disclosed credential, blending with confidence-adaptive α. On the
+  benchmark a credential round-trip ranks at **0.81 NDCG@10** (quality adds +0.19 over
+  preference alone), and revoking the agent's token is honored at the boundary (403,
+  no ranking). See
+  [`docs/phase1-protocol-integration.md`](docs/phase1-protocol-integration.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
@@ -116,6 +124,7 @@ python experiments/run_phase1_integration.py   # Integration: α-blend benchmark
 python experiments/run_phase1_quality_robustness.py  # Quality handling: shrinkage vs. raw
 python -m preferencelayer.cli demo             # end-to-end PTP credential lifecycle
 python -m preferencelayer.cli agent-demo       # preference+quality α-blend ranking
+python -m preferencelayer.cli protocol-demo    # rank over the real PTP + QIL MCP tools
 python -m pytest                               # full test suite
 ```
 
@@ -130,6 +139,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 - [Phase 0 Results — Claim 2 (QIL Extraction)](docs/phase0-qil-results.md)
 - [Phase 1 Integration Results — the α-Blend](docs/phase1-integration-results.md)
 - [Phase 1 Quality Handling — Shrinkage vs. Raw Averaging](docs/phase1-quality-robustness-results.md)
+- [Phase 1 Protocol Integration — PTP + QIL over MCP](docs/phase1-protocol-integration.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)
