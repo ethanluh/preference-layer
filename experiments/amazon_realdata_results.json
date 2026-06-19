@@ -1,0 +1,21 @@
+{
+  "config": {
+    "category": "All_Beauty",
+    "label": "all_beauty",
+    "max_items": 4000,
+    "min_user_reviews": 5,
+    "seed": 7,
+    "n_items": 112590,
+    "n_users": 681
+  },
+  "ndcg": {
+    "popularity": 0.010899956684084723,
+    "flat_item_embedding": 0.0944881200508094,
+    "flat_attribute": 0.09982324364032513,
+    "preference_graph": 0.07908230676186022
+  },
+  "graph_vs_flat_attribute": {
+    "rel_gain_pct": -20.77766271871203,
+    "p_value": 0.0004
+  }
+}

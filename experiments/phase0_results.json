@@ -1,0 +1,95 @@
+{
+  "config": {
+    "users": 500,
+    "seed": 7,
+    "items": 400,
+    "json": "results/phase0_results.json"
+  },
+  "within": {
+    "popularity": {
+      "name": "popularity",
+      "ndcg": 0.14875755311434816,
+      "ndcg_std": 0.20816566962917604,
+      "recall": 0.2237577991142146,
+      "hit_rate": 0.49490835030549896
+    },
+    "flat_item_embedding": {
+      "name": "flat_item_embedding",
+      "ndcg": 0.24669843404486494,
+      "ndcg_std": 0.23739466866457176,
+      "recall": 0.32796123880645267,
+      "hit_rate": 0.6904276985743381
+    },
+    "flat_attribute": {
+      "name": "flat_attribute",
+      "ndcg": 0.5259839083990985,
+      "ndcg_std": 0.2589198070560117,
+      "recall": 0.6553413829890409,
+      "hit_rate": 0.9429735234215886
+    },
+    "preference_graph": {
+      "name": "preference_graph",
+      "ndcg": 0.539200146287301,
+      "ndcg_std": 0.2689280620947069,
+      "recall": 0.6526460414444121,
+      "hit_rate": 0.9389002036659878
+    }
+  },
+  "transfer": {
+    "popularity": {
+      "name": "popularity",
+      "ndcg": 0.272138655405575,
+      "ndcg_std": 0.22975633365691633,
+      "recall": 0.22333333333333336,
+      "hit_rate": 0.838
+    },
+    "flat_item_embedding": {
+      "name": "flat_item_embedding",
+      "ndcg": 0.2864531326663322,
+      "ndcg_std": 0.19471947787996283,
+      "recall": 0.21783333333333335,
+      "hit_rate": 0.9
+    },
+    "flat_attribute": {
+      "name": "flat_attribute",
+      "ndcg": 0.6826632818296149,
+      "ndcg_std": 0.16199464752042175,
+      "recall": 0.5283333333333332,
+      "hit_rate": 0.998
+    },
+    "preference_graph": {
+      "name": "preference_graph",
+      "ndcg": 0.7490766933712487,
+      "ndcg_std": 0.15751807893105674,
+      "recall": 0.5821666666666667,
+      "hit_rate": 1.0
+    }
+  },
+  "comparisons": [
+    {
+      "baseline": "popularity",
+      "graph_ndcg": 0.7490766933712487,
+      "baseline_ndcg": 0.272138655405575,
+      "abs_gain": 0.4769380379656737,
+      "rel_gain_pct": 175.25552819935888,
+      "p_value": 0.0002
+    },
+    {
+      "baseline": "flat_item_embedding",
+      "graph_ndcg": 0.7490766933712487,
+      "baseline_ndcg": 0.2864531326663322,
+      "abs_gain": 0.4626235607049165,
+      "rel_gain_pct": 161.50061142595078,
+      "p_value": 0.0002
+    },
+    {
+      "baseline": "flat_attribute",
+      "graph_ndcg": 0.7490766933712487,
+      "baseline_ndcg": 0.6826632818296149,
+      "abs_gain": 0.06641341154163383,
+      "rel_gain_pct": 9.728575318074581,
+      "p_value": 0.0002
+    }
+  ],
+  "gate_pass": true
+}

@@ -1,0 +1,53 @@
+{
+  "config": {
+    "train": 1400,
+    "test": 400,
+    "seed": 17,
+    "json": "experiments/phase0_qil_results.json"
+  },
+  "gate_precision": 0.7,
+  "macro_precision": 0.8833643273612545,
+  "micro_precision": 0.8325,
+  "baseline_precision": 0.2425,
+  "gate_pass": true,
+  "per_class": [
+    {
+      "label": "gaming",
+      "precision": 0.9253731343283582,
+      "recall": 0.7126436781609196,
+      "f1": 0.8051948051948052,
+      "support": 87
+    },
+    {
+      "label": "heavy_use",
+      "precision": 0.7307692307692307,
+      "recall": 0.979381443298969,
+      "f1": 0.8370044052863436,
+      "support": 97
+    },
+    {
+      "label": "light_use",
+      "precision": 0.7815126050420168,
+      "recall": 0.96875,
+      "f1": 0.8651162790697675,
+      "support": 96
+    },
+    {
+      "label": "professional",
+      "precision": 0.9791666666666666,
+      "recall": 0.746031746031746,
+      "f1": 0.846846846846847,
+      "support": 63
+    },
+    {
+      "label": "travel",
+      "precision": 1.0,
+      "recall": 0.631578947368421,
+      "f1": 0.7741935483870968,
+      "support": 57
+    }
+  ],
+  "n_test": 400,
+  "n_quality_posteriors": 367,
+  "n_failure_posteriors": 80
+}
