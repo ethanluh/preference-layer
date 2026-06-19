@@ -1,35 +1,46 @@
-"""Amazon Reviews 2023 loader — the real-data path for the Phase 0 benchmark.
+"""Amazon Reviews 2023 loader — the real-data path for the Phase 0/1 benchmark.
 
-The synthetic benchmark (``synthetic.py``) is the controlled, reproducible test
-with a known ground truth. This module is the bridge to the real corpus the design
-docs target: the McAuley-Lab *Amazon Reviews 2023* dataset, loaded via the
-HuggingFace ``datasets`` library (an optional dependency:
-``pip install preferencelayer[amazon]``).
+The synthetic benchmark (``synthetic.py``) is the controlled, reproducible test with a
+known ground truth. This module is the bridge to the real corpus the design docs
+target: the McAuley-Lab *Amazon Reviews 2023* dataset. It builds the same
+:class:`~preferencelayer.data.synthetic.CategoryData` objects the harness consumes, so
+every model and metric works unchanged on real data.
 
-It builds the same :class:`~preferencelayer.data.synthetic.CategoryData` objects
-the harness consumes, so every model and metric works unchanged on real data.
-Cross-category transfer is evaluated over users who reviewed items in *both*
-chosen categories.
+How the data is loaded
+----------------------
+The dataset is read directly from its Hugging Face **Parquet** (item metadata) and the
+ready-made **0-core ``last_out`` benchmark CSV** (user→item→rating interactions) —
+*not* the legacy loading script. (The original script-based path stopped working once
+``datasets`` dropped ``trust_remote_code`` / script datasets; the Parquet + CSV files
+need only ``huggingface_hub`` + ``pandas``/``pyarrow``, the ``[amazon]`` extra.) Item
+relevance is the user's own rating; candidate sets mix the user's relevant items with
+**hard negatives** — globally popular items the user did *not* engage with — so a
+popularity baseline cannot win for free, exactly as the synthetic benchmark does.
 
 Attribute featurization
 -----------------------
-Real reviews do not ship with the clean attribute vectors the synthetic generator
-plants. We derive an approximate shared-attribute vector per item from available
-metadata (price percentile, average rating, rating volume, title/feature
-keywords). This is intentionally coarse — production-grade attribute extraction is
-Phase 1 work (the QIL NLP pipeline). The featurization is documented here so the
-real-data results are interpreted with that caveat in mind.
+Real items do not ship with the clean attribute vectors the synthetic generator plants.
+We derive a coarse shared-attribute vector per item from metadata (price percentile,
+average rating, rating volume, title/feature keywords). This is intentionally coarse —
+production-grade attribute extraction is Phase 1 work (the QIL NLP pipeline) — and the
+real-data results in ``docs/phase1-amazon-realdata.md`` are interpreted with that caveat.
+The assembly logic (:func:`build_category_data`) is split from the network fetch so it
+can be unit-tested offline.
 """
 
 from __future__ import annotations
 
-import re
-from collections import defaultdict
+from collections import Counter, defaultdict
+from collections.abc import Iterable
 
 import numpy as np
 
 from ..attributes import AttributeSchema, SHARED_ATTRIBUTES
 from .synthetic import CategoryData, Item
+
+_REPO = "McAuley-Lab/Amazon-Reviews-2023"
+_META_COLUMNS = ("parent_asin", "title", "features", "description", "store",
+                 "average_rating", "rating_number", "price")
 
 # Keyword cues used to derive coarse shared-attribute signals from item text.
 _ATTR_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -43,17 +54,16 @@ _ATTR_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _require_datasets():
+def _require_deps():
     try:
-        import datasets  # noqa: F401
+        import pandas as pd
+        from huggingface_hub import hf_hub_download, list_repo_files
     except ImportError as e:  # pragma: no cover - depends on optional install
         raise ImportError(
-            "The Amazon Reviews 2023 loader needs the 'datasets' package. "
-            "Install it with: pip install preferencelayer[amazon]"
+            "The Amazon Reviews 2023 loader needs pandas + pyarrow + huggingface_hub. "
+            "Install them with: pip install preferencelayer[amazon]"
         ) from e
-    import datasets
-
-    return datasets
+    return pd, hf_hub_download, list_repo_files
 
 
 def _keyword_score(text: str, words: tuple[str, ...]) -> float:
@@ -61,13 +71,18 @@ def _keyword_score(text: str, words: tuple[str, ...]) -> float:
     return min(1.0, sum(text.count(w) for w in words) / 3.0)
 
 
+def _to_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _featurize(meta: dict, price_pct: float, schema: AttributeSchema) -> np.ndarray:
     """Map item metadata to a shared-attribute vector in [0, 1]."""
-    text = " ".join(
-        str(meta.get(k, "")) for k in ("title", "features", "description", "store")
-    )
-    rating = float(meta.get("average_rating") or 0.0) / 5.0
-    n_ratings = float(meta.get("rating_number") or 0.0)
+    text = " ".join(str(meta.get(k, "")) for k in ("title", "features", "description", "store"))
+    rating = (_to_float(meta.get("average_rating")) or 0.0) / 5.0
+    n_ratings = _to_float(meta.get("rating_number")) or 0.0
     popularity = min(1.0, np.log1p(n_ratings) / 12.0)
 
     vec = np.zeros(schema.dim)
@@ -83,88 +98,109 @@ def _featurize(meta: dict, price_pct: float, schema: AttributeSchema) -> np.ndar
     return np.clip(vec, 0.0, 1.0)
 
 
-def load_category(
-    category_config: str,
+def build_category_data(
+    metas: dict[str, dict],
+    interactions: Iterable[tuple[str, str, float]],
     category_label: str,
-    max_items: int = 2000,
-    min_user_reviews: int = 3,
+    *,
+    min_user_reviews: int = 5,
     n_relevant: int = 12,
     n_candidates: int = 120,
+    n_hard_negatives: int = 50,
     seed: int = 7,
 ) -> CategoryData:
-    """Load one Amazon Reviews 2023 category into a :class:`CategoryData`.
+    """Assemble a :class:`CategoryData` from item metadata + rating interactions.
 
-    ``category_config`` is a HuggingFace config name such as
-    ``"raw_review_Electronics"`` paired with its ``raw_meta_Electronics`` metadata
-    split. ``category_label`` is the label used inside PreferenceLayer (e.g.
-    ``"laptops"``). Items are scored as relevant by the user's own rating; hard
-    negatives are highly-rated-by-others items the user did not engage with.
+    Pure (no network), so it is unit-testable on small in-memory inputs. ``metas`` maps
+    item id -> metadata dict; ``interactions`` yields ``(user_id, item_id, rating)``.
+    Relevance is the user's top-rated items; candidate sets are
+    ``relevant + hard negatives (popular items the user didn't touch) + random fill`` so
+    a popularity baseline cannot trivially win.
     """
-    datasets = _require_datasets()
-    rng = np.random.default_rng(seed)
     schema = AttributeSchema.for_category(category_label)
+    rng = np.random.default_rng(seed)
 
-    meta_split = datasets.load_dataset(
-        "McAuley-Lab/Amazon-Reviews-2023", f"raw_meta_{category_config}",
-        split="full", trust_remote_code=True, streaming=True,
-    )
-    metas: dict[str, dict] = {}
-    prices: list[float] = []
-    for row in meta_split:
-        pid = row.get("parent_asin") or row.get("asin")
-        if not pid:
-            continue
-        metas[pid] = row
-        try:
-            prices.append(float(row.get("price")))
-        except (TypeError, ValueError):
-            pass
-        if len(metas) >= max_items:
-            break
-
-    price_arr = np.array(prices) if prices else np.array([0.0])
+    price_arr = np.array([p for p in (_to_float(m.get("price")) for m in metas.values()) if p is not None]
+                         or [0.0])
 
     def price_pct(meta: dict) -> float:
-        try:
-            p = float(meta.get("price"))
-        except (TypeError, ValueError):
-            return 0.5
-        return float((price_arr < p).mean())
+        p = _to_float(meta.get("price"))
+        return float((price_arr < p).mean()) if p is not None else 0.5
 
     items = [Item(pid, category_label, _featurize(m, price_pct(m), schema)) for pid, m in metas.items()]
     item_ids = {it.item_id for it in items}
 
-    reviews = datasets.load_dataset(
-        "McAuley-Lab/Amazon-Reviews-2023", f"raw_review_{category_config}",
-        split="full", trust_remote_code=True, streaming=True,
-    )
     user_items: dict[str, list[tuple[str, float]]] = defaultdict(list)
-    for row in reviews:
-        uid, pid = row.get("user_id"), (row.get("parent_asin") or row.get("asin"))
+    for uid, pid, rating in interactions:
         if uid and pid in item_ids:
-            user_items[uid].append((pid, float(row.get("rating") or 0.0)))
-
+            user_items[uid].append((pid, float(rating)))
     users = {u: v for u, v in user_items.items() if len(v) >= min_user_reviews}
+
     purchases = {u: [pid for pid, _ in v] for u, v in users.items()}
     relevant = {
-        u: [pid for pid, _ in sorted(v, key=lambda x: -x[1])[:n_relevant]]
-        for u, v in users.items()
+        u: [pid for pid, _ in sorted(v, key=lambda x: -x[1])[:n_relevant]] for u, v in users.items()
     }
+
+    # Hard negatives: globally popular items, so popularity ranks them high and cannot
+    # coast on the fact that a user's favorites are also broadly popular.
+    pop = Counter(pid for v in users.values() for pid, _ in v)
+    popular = [pid for pid, _ in pop.most_common()]
     all_ids = [it.item_id for it in items]
-    eval_candidates = {}
+
+    eval_candidates: dict[str, list[str]] = {}
     for u, rel in relevant.items():
-        rel_set = set(rel)
-        pool = [i for i in all_ids if i not in rel_set]
-        fill = list(rng.choice(pool, size=min(n_candidates - len(rel), len(pool)), replace=False))
-        cand = rel + fill
+        seen = set(rel) | set(purchases[u])
+        hard = [pid for pid in popular if pid not in seen][:n_hard_negatives]
+        seen |= set(hard)
+        pool = [i for i in all_ids if i not in seen]
+        n_fill = max(0, n_candidates - len(rel) - len(hard))
+        fill = list(rng.choice(pool, size=min(n_fill, len(pool)), replace=False)) if pool else []
+        cand = rel + hard + fill
         rng.shuffle(cand)
         eval_candidates[u] = cand
 
     return CategoryData(
-        category=category_label,
-        schema=schema,
-        items=items,
-        purchases=purchases,
-        relevant=relevant,
-        eval_candidates=eval_candidates,
+        category=category_label, schema=schema, items=items,
+        purchases=purchases, relevant=relevant, eval_candidates=eval_candidates,
     )
+
+
+def load_category(
+    category_config: str,
+    category_label: str,
+    max_items: int = 4000,
+    max_interactions: int | None = None,
+    **build_kwargs,
+) -> CategoryData:
+    """Load one Amazon Reviews 2023 category into a :class:`CategoryData`.
+
+    ``category_config`` is the dataset category name (e.g. ``"All_Beauty"``,
+    ``"Electronics"``); ``category_label`` is the label used inside PreferenceLayer.
+    Reads item metadata from the ``raw_meta_<config>`` Parquet shards (up to
+    ``max_items``) and interactions from the ``0core/last_out`` benchmark CSV (up to
+    ``max_interactions`` rows, if given), then delegates to :func:`build_category_data`.
+    """
+    pd, hf_hub_download, list_repo_files = _require_deps()
+
+    shards = sorted(f for f in list_repo_files(_REPO, repo_type="dataset")
+                    if f.startswith(f"raw_meta_{category_config}/") and f.endswith(".parquet"))
+    if not shards:
+        raise ValueError(f"no Parquet metadata for category '{category_config}' "
+                         f"(it may only exist via the legacy loading script)")
+    metas: dict[str, dict] = {}
+    for shard in shards:
+        frame = pd.read_parquet(hf_hub_download(_REPO, shard, repo_type="dataset"),
+                                columns=list(_META_COLUMNS))
+        for row in frame.to_dict("records"):
+            pid = row.get("parent_asin")
+            if pid and pid not in metas:
+                metas[pid] = row
+        if len(metas) >= max_items:
+            break
+
+    csv = hf_hub_download(_REPO, f"benchmark/0core/last_out/{category_config}.train.csv",
+                          repo_type="dataset")
+    reviews = pd.read_csv(csv, usecols=["user_id", "parent_asin", "rating"], nrows=max_interactions)
+    interactions = zip(reviews.user_id, reviews.parent_asin, reviews.rating)
+
+    return build_category_data(metas, interactions, category_label, **build_kwargs)
