@@ -47,7 +47,7 @@ from ..eval import metrics
 from ..eval.harness import _paired_bootstrap_p
 from ..qil.aggregate import QualityAggregator
 from ..qil.query import QualityService
-from ._harness import prepare_preference_model
+from ._harness import prepare_preference_model, purchase_matrix
 from .combine import alpha_from_confidence
 from .combine import blend as _blend
 from .recommender import AgentRecommender
@@ -79,6 +79,9 @@ class CohortBreakdown:
     n_users: int
     by_condition: dict[str, float]   # condition name -> mean NDCG@10
     mean_confidence: float
+    # condition name -> per-user NDCG@10 within this cohort (for within-cohort
+    # significance, e.g. the zero-history adaptive-vs-fixed contrast).
+    per_user_ndcg: dict[str, list[float]] = field(default_factory=dict)
 
 
 @dataclass
@@ -118,8 +121,9 @@ class IntegrationHarness:
         # Per-cohort α-sweep NDCG curves (only when the optimal-α analysis is requested).
         cohort_curve: dict[str, list[np.ndarray]] = {}
 
+        dim = self.s.schema.dim
         for u in self.s.users:
-            purchased = np.stack([idx[pid].attributes for pid in u.purchases])
+            purchased = purchase_matrix(idx, u.purchases, dim)
             state = model.fit(purchased, catalog, n_shared)
             agent = AgentRecommender(model, state, service, n_shared)
 
@@ -169,9 +173,11 @@ class IntegrationHarness:
                 n_users=len(cohort_conf[c]),
                 by_condition={name: float(np.mean(vals)) for name, vals in cohort_acc[c].items()},
                 mean_confidence=float(np.mean(cohort_conf[c])),
+                per_user_ndcg={name: list(vals) for name, vals in cohort_acc[c].items()},
             )
-            # Order cohorts cold -> warm -> rich for readability.
-            for c in ("cold", "warm", "rich")
+            # Order cohorts new -> cold -> warm -> rich for readability ('new' only
+            # present when the scenario includes the zero-history cohort).
+            for c in ("new", "cold", "warm", "rich")
             if c in cohort_acc
         ]
 
@@ -198,7 +204,7 @@ class IntegrationHarness:
         # α points the right *direction* even though the documented slope overshoots.
         optimal_alpha: list[tuple[str, float, float]] = []
         if with_alpha_curve:
-            for c in ("cold", "warm", "rich"):
+            for c in ("new", "cold", "warm", "rich"):
                 if c not in cohort_curve:
                     continue
                 mean_curve = np.mean(cohort_curve[c], axis=0)

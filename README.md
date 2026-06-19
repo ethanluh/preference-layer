@@ -62,7 +62,8 @@ preferencelayer/
     ├── phase0-qil-results.md  # Phase 0 Claim 2 report (QIL extraction)
     ├── phase1-integration-results.md  # Integration report (α-blend)
     ├── phase1-quality-robustness-results.md  # Quality handling (shrinkage vs. raw)
-    └── phase1-protocol-integration.md  # End-to-end over the PTP + QIL MCP tools
+    ├── phase1-protocol-integration.md  # End-to-end over the PTP + QIL MCP tools
+    └── phase1-cold-start-results.md  # Adaptive α in the zero-history regime
 ```
 
 ---
@@ -102,6 +103,13 @@ research prototype alongside the design docs.
   preference alone), and revoking the agent's token is honored at the boundary (403,
   no ranking). See
   [`docs/phase1-protocol-integration.md`](docs/phase1-protocol-integration.md).
+- **Zero-history cold-start:** adding a brand-new-user cohort (no history, confidence
+  0) finally makes the optimal α vary — **0.10 for new users up to 0.60 for
+  rich-history users**, and quality alone beats preference alone *only* for new users,
+  vindicating the architecture's "new user → lean on quality" premise. But the
+  documented sigmoid α still only **ties** a fixed blend even here (+0.014, p=0.31) —
+  z-scoring already lets the fixed blend lean on the informative signal. See
+  [`docs/phase1-cold-start-results.md`](docs/phase1-cold-start-results.md).
 
 Also implemented: the **PTP credential** (W3C-VC-shaped, Ed25519-signed, selective
 disclosure), an **on-device differentially private update** mechanism, a
@@ -125,6 +133,7 @@ python experiments/run_phase1_quality_robustness.py  # Quality handling: shrinka
 python -m preferencelayer.cli demo             # end-to-end PTP credential lifecycle
 python -m preferencelayer.cli agent-demo       # preference+quality α-blend ranking
 python -m preferencelayer.cli protocol-demo    # rank over the real PTP + QIL MCP tools
+python experiments/run_phase1_cold_start.py    # adaptive α in the zero-history regime
 python -m pytest                               # full test suite
 ```
 
@@ -140,6 +149,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra:
 - [Phase 1 Integration Results — the α-Blend](docs/phase1-integration-results.md)
 - [Phase 1 Quality Handling — Shrinkage vs. Raw Averaging](docs/phase1-quality-robustness-results.md)
 - [Phase 1 Protocol Integration — PTP + QIL over MCP](docs/phase1-protocol-integration.md)
+- [Phase 1 Cold-Start — Adaptive α in the Zero-History Regime](docs/phase1-cold-start-results.md)
 - [Technical Proposal](proposals/technical.md)
 - [Investor Proposal](proposals/investor.md)
 - [Implementation Plan](docs/implementation-plan.md)

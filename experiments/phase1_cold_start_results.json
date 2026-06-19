@@ -1,0 +1,85 @@
+{
+  "config": {
+    "users": 480,
+    "seed": 23,
+    "include_new_cohort": true
+  },
+  "cohorts": [
+    {
+      "cohort": "new",
+      "n_users": 120,
+      "mean_confidence": 0.0,
+      "by_condition": {
+        "preference_only": 0.17330820205076053,
+        "quality_only": 0.24918115848118572,
+        "fixed_alpha": 0.23516620121128753,
+        "adaptive_alpha": 0.24914300030793454
+      }
+    },
+    {
+      "cohort": "cold",
+      "n_users": 120,
+      "mean_confidence": 0.20437710437710438,
+      "by_condition": {
+        "preference_only": 0.30766378118642895,
+        "quality_only": 0.2565863035774293,
+        "fixed_alpha": 0.426841555449975,
+        "adaptive_alpha": 0.39989391943881747
+      }
+    },
+    {
+      "cohort": "warm",
+      "n_users": 120,
+      "mean_confidence": 0.5240759988205809,
+      "by_condition": {
+        "preference_only": 0.5007118519465306,
+        "quality_only": 0.25074398885088717,
+        "fixed_alpha": 0.6520900886336592,
+        "adaptive_alpha": 0.6534533014838958
+      }
+    },
+    {
+      "cohort": "rich",
+      "n_users": 120,
+      "mean_confidence": 0.79200891596661,
+      "by_condition": {
+        "preference_only": 0.5547957378143381,
+        "quality_only": 0.24253628077313644,
+        "fixed_alpha": 0.7313696415260922,
+        "adaptive_alpha": 0.7168240738711106
+      }
+    }
+  ],
+  "optimal_alpha": [
+    {
+      "cohort": "new",
+      "mean_confidence": 0.0,
+      "formula_alpha": 0.18242552380635632,
+      "optimal_alpha": 0.1
+    },
+    {
+      "cohort": "cold",
+      "mean_confidence": 0.20437710437710438,
+      "formula_alpha": 0.29175644296518044,
+      "optimal_alpha": 0.45
+    },
+    {
+      "cohort": "warm",
+      "mean_confidence": 0.5240759988205809,
+      "formula_alpha": 0.5180491531035619,
+      "optimal_alpha": 0.55
+    },
+    {
+      "cohort": "rich",
+      "mean_confidence": 0.79200891596661,
+      "formula_alpha": 0.7059981895706662,
+      "optimal_alpha": 0.6000000000000001
+    }
+  ],
+  "new_cohort_adaptive_vs_fixed": {
+    "abs_gain": 0.013976799096647008,
+    "p_value": 0.3086,
+    "quality_only": 0.24918115848118572,
+    "preference_only": 0.17330820205076053
+  }
+}

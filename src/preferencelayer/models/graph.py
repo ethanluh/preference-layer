@@ -156,6 +156,12 @@ class SparsePreferenceGraph(Recommender):
 
     def fit(self, purchased, catalog, n_shared, population: PopulationPrior | None = None):
         assert self.prior_w is not None, "call prepare() before fit()"
+        # Zero-history (brand-new) user: the cold-start blend weight is
+        # lam = n/(n+pivot) = 0, so the result is purely the population prior. Return
+        # it directly — there is no per-user fit to compute, and the logistic fit
+        # divides by the (here empty) training set.
+        if len(purchased) == 0:
+            return {"w": self.prior_w.copy(), "n_shared": n_shared}
         pos = self._std(self._features(purchased, n_shared))
         neg = self._std(self._features(catalog, n_shared))
         w_user = self._logistic_fit(

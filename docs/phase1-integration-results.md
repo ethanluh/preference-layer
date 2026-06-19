@@ -107,7 +107,11 @@ across the population. Measuring it directly confirms this:
 | rich (history 22–40) | 0.79 | 0.71 | **0.55** |
 
 The optimal α sits in a **narrow 0.50–0.55 band** (here `quality_weight = 0.6`, so
-`alpha* = 0.625`, pulled down slightly by fit noise). The documented sigmoid,
+`alpha* = 0.625`, pulled down slightly by fit noise). *(Follow-up: this narrow band is
+itself an artifact of every cohort having at least some purchase history — adding a
+true zero-history cohort makes the optimal α span 0.10→0.60, vindicating the adaptive
+direction, though the documented formula still only ties a fixed blend even there. See
+[`phase1-cold-start-results.md`](phase1-cold-start-results.md).)* The documented sigmoid,
 keyed off a confidence that ranges 0.19–0.79, instead swings α over **0.29–0.71**
 — too low for cold users (it throws away a still-useful preference prior) and too
 high for rich users (it underweights quality, which preference can never recover

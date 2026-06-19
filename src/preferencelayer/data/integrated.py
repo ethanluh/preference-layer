@@ -122,6 +122,14 @@ _COHORTS: tuple[tuple[str, int, int], ...] = (
     ("rich", 22, 40),
 )
 
+# A brand-new user with *zero* history: no personal signal at all, so the
+# preference fit collapses to the population prior and credential confidence is 0.
+# This is the regime the architecture's "lean on quality for new users" intuition
+# targets. Prepended to the cohorts only when ``include_new_cohort=True`` so the
+# default benchmark (and the integration / quality-robustness experiments) is
+# unchanged.
+_NEW_COHORT: tuple[str, int, int] = ("new", 0, 0)
+
 
 def _softmax_sample(rng: np.random.Generator, utilities: np.ndarray, n: int, temp: float) -> list[int]:
     logits = utilities / max(temp, 1e-6)
@@ -153,6 +161,7 @@ def generate(
     evidence_hi: int | None = None,
     signal_obs_noise: float = 0.10,
     signal_confidence: float = 0.85,
+    include_new_cohort: bool = False,
     seed: int = 23,
 ) -> IntegratedScenario:
     """Generate the integrated preference+quality benchmark.
@@ -218,9 +227,10 @@ def generate(
         return u
 
     # --------------------------------------------------------------- the users
+    cohorts = (_NEW_COHORT, *_COHORTS) if include_new_cohort else _COHORTS
     users: list[IntegratedUser] = []
     for ui, uid in enumerate(user_ids):
-        cohort_name, lo, hi = _COHORTS[ui % len(_COHORTS)]
+        cohort_name, lo, hi = cohorts[ui % len(cohorts)]
         history_len = int(rng.integers(lo, hi + 1))
         profile = use_profiles[ui % len(use_profiles)]
 

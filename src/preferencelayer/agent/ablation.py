@@ -38,7 +38,7 @@ from ..eval.harness import _paired_bootstrap_p
 from ..qil.aggregate import QualityAggregator
 from ..qil.query import QualityService
 from . import combine
-from ._harness import prepare_preference_model
+from ._harness import prepare_preference_model, purchase_matrix
 from .recommender import AgentRecommender
 
 # The 2×2 cells: (name, raw_estimator?, evidence_aware_alpha?).
@@ -111,8 +111,9 @@ class QualityHandlingHarness:
         per_cell: dict[str, list[float]] = {name: [] for name, _, _ in _CELLS}
         ref: dict[str, list[float]] = {"preference_only": [], "quality_only": []}
 
+        dim = self.s.schema.dim
         for u in self.s.users:
-            purchased = np.stack([idx[pid].attributes for pid in u.purchases])
+            purchased = purchase_matrix(idx, u.purchases, dim)
             state = model.fit(purchased, catalog, n_shared)
             agent_shrunk = AgentRecommender(model, state, shrunk, n_shared)
             agent_raw = AgentRecommender(model, state, raw, n_shared)
