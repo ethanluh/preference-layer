@@ -170,6 +170,84 @@ def _agent_demo(args) -> int:
     return 0
 
 
+def _protocol_demo(args) -> int:
+    """Rank products end-to-end through the real PTP + QIL MCP tool handlers."""
+    import numpy as np
+
+    from .agent.protocol import ProtocolAgent
+    from .attributes import AttributeSchema
+    from .mcp.server import PTPToolHandler
+    from .ptp import (
+        AttributeNode,
+        CredentialStore,
+        Edge,
+        PreferenceCredential,
+        PreferenceGraph,
+        new_user_keypair,
+    )
+    from .qil import QualityAggregator, QualityService
+    from .qil.extract import ExtractedSignal
+    from .qil.mcp_server import QILToolHandler
+
+    schema = AttributeSchema.for_category("laptops")
+
+    # 1. The user's portable preference credential, held in their own store.
+    sk, did = new_user_keypair()
+    store = CredentialStore(sk, did)
+    store.put_credential(PreferenceCredential(did, PreferenceGraph(
+        category="laptops",
+        attributeNodes=[
+            AttributeNode("performance", weight=0.8, confidence=0.8),
+            AttributeNode("portability", weight=0.6, confidence=0.7),
+            AttributeNode("price_sensitivity", weight=-0.3, confidence=0.6),
+        ],
+        edges=[Edge("performance", "portability", weight=-0.4, contextKey="travel")],
+    )))
+    token = store.authorize_agent("agent.shopping.example", scope=["laptops"])
+    ptp = PTPToolHandler(store, token)
+
+    # 2. A QIL service with quality evidence for the candidate products.
+    products = {"workhorse": 0.85, "ultrabook": 0.55, "budget": 0.30}
+    sigs = [
+        ExtractedSignal(pid, "laptops", "travel", "performance", None, dim, mean, 0.9)
+        for pid, mean in products.items() for dim in ("thermal", "build_quality") for _ in range(12)
+    ]
+    qil = QILToolHandler(QualityService(QualityAggregator().fit(sigs)))
+
+    # 3. Candidate products as attribute vectors over the laptops schema.
+    def vec(**kw):
+        x = np.zeros(schema.dim)
+        for name, v in kw.items():
+            x[schema.index(name)] = v
+        return x
+
+    cand_ids = list(products)
+    cand_attrs = np.stack([
+        vec(performance=0.9, portability=0.3, price_sensitivity=0.2),   # workhorse
+        vec(performance=0.6, portability=0.9, price_sensitivity=0.4),   # ultrabook
+        vec(performance=0.3, portability=0.5, price_sensitivity=0.9),   # budget
+    ])
+
+    agent = ProtocolAgent(ptp, qil, schema)
+    rec = agent.recommend("laptops", "travel", cand_ids, cand_attrs,
+                          query_context="frequent travel, sustained workloads")
+
+    print("Agent ranks products using ONLY the PTP get_preference + QIL get_quality tools.\n")
+    print(f"get_preference -> confidence={rec.confidence:.2f} coverage={rec.coverage}")
+    print(f"blended with alpha = sigmoid(3*(confidence-0.5)) = {rec.alpha:.2f}\n")
+    print(f"{'product':<12}{'pref':>8}{'quality':>9}{'blended':>9}")
+    print("-" * 38)
+    for i in rec.order:
+        print(f"{cand_ids[i]:<12}{rec.pref[i]:>8.2f}{rec.quality[i]:>9.2f}{rec.blended[i]:>9.2f}")
+    print(f"\nTop recommendation: {cand_ids[rec.order[0]]}")
+
+    # 4. Revoke the agent: the same call is now denied at the protocol layer.
+    store.revoke_agent("agent.shopping.example")
+    denied = agent.recommend("laptops", "travel", cand_ids, cand_attrs)
+    print(f"\nAfter revocation: get_preference denied -> status {denied.status}, no ranking produced.")
+    return 0
+
+
 def _integration(args) -> int:
     from .agent import IntegrationHarness
     from .data import integrated
@@ -209,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     qil.add_argument("--seed", type=int, default=17)
     ad = sub.add_parser("agent-demo", help="Show the preference+quality α-blend ranking candidates.")
     ad.add_argument("--seed", type=int, default=23)
+    sub.add_parser("protocol-demo", help="Rank products through the real PTP + QIL MCP tool handlers.")
     integ = sub.add_parser("integration", help="Run the Phase 1 integration benchmark.")
     integ.add_argument("--users", type=int, default=300)
     integ.add_argument("--seed", type=int, default=23)
@@ -223,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
         return _qil_experiment(args)
     if args.command == "agent-demo":
         return _agent_demo(args)
+    if args.command == "protocol-demo":
+        return _protocol_demo(args)
     if args.command == "integration":
         return _integration(args)
     if args.command == "view":
