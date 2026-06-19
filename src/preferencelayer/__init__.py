@@ -12,4 +12,8 @@ def __getattr__(name):  # lazy submodule access without importing optional deps 
         from . import qil
 
         return qil
+    if name == "agent":
+        from . import agent
+
+        return agent
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
