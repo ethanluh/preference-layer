@@ -46,7 +46,7 @@ def alpha_from_confidence(mean_confidence: float) -> float:
     return sigmoid(3.0 * (mean_confidence - 0.5))
 
 
-def quality_reliability(evidence_count, pivot: float = 8.0):
+def quality_reliability(evidence_count, pivot: float = 8.0) -> "float | np.ndarray":
     """How much to trust a quality estimate, from its evidence count.
 
     Saturating reliability in [0, 1): ``evidence / (evidence + pivot)`` — 0 with no
@@ -61,7 +61,9 @@ def quality_reliability(evidence_count, pivot: float = 8.0):
     return e / (e + pivot)
 
 
-def evidence_adaptive_alpha(mean_confidence: float, quality_reliability, *, quality_weight: float = 1.0):
+def evidence_adaptive_alpha(
+    mean_confidence: float, quality_reliability, *, quality_weight: float = 1.0
+) -> "float | np.ndarray":
     """Per-candidate blend weight from *both* reliabilities — the evidence-aware α.
 
     A **generalization** of :func:`alpha_from_confidence`. The documented formula
@@ -104,10 +106,12 @@ def zscore(scores: np.ndarray) -> np.ndarray:
     return (scores - scores.mean()) / std
 
 
-def blend(pref: np.ndarray, quality: np.ndarray, alpha: float) -> np.ndarray:
+def blend(pref: np.ndarray, quality: np.ndarray, alpha: "float | np.ndarray") -> np.ndarray:
     """Combine standardized preference and quality scores with weight ``alpha``.
 
     ``alpha * z(pref) + (1 - alpha) * z(quality)``. At ``alpha == 1`` this is a
-    pure preference ranking; at ``alpha == 0`` a pure quality ranking.
+    pure preference ranking; at ``alpha == 0`` a pure quality ranking. ``alpha`` may
+    be a scalar or a per-candidate array (broadcast element-wise) — the latter is
+    how the evidence-aware blend weights each candidate by its own reliability.
     """
     return alpha * zscore(pref) + (1.0 - alpha) * zscore(quality)

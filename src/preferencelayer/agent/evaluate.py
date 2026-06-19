@@ -45,11 +45,15 @@ import numpy as np
 from ..data.integrated import IntegratedScenario
 from ..eval import metrics
 from ..eval.harness import _paired_bootstrap_p
-from ..models.graph import SparsePreferenceGraph
 from ..qil.aggregate import QualityAggregator
 from ..qil.query import QualityService
+from ._harness import prepare_preference_model
+from .combine import alpha_from_confidence
 from .combine import blend as _blend
 from .recommender import AgentRecommender
+
+# α grid swept to locate each cohort's empirically-optimal blend weight.
+_ALPHA_GRID = np.linspace(0.0, 1.0, 21)
 
 # The four conditions, as (name, fixed-alpha-or-None). None means adaptive.
 CONDITIONS: tuple[tuple[str, float | None], ...] = (
@@ -102,30 +106,17 @@ class IntegrationHarness:
         self.k = k
         self.seed = seed
 
-    def _build_agent_pieces(self) -> tuple[SparsePreferenceGraph, QualityService]:
-        """Fit the shared preference topology/prior and the quality posteriors once."""
-        idx = self.s.product_index()
-        n_shared = self.s.schema.n_shared
-        per_user_purchased = [
-            np.stack([idx[pid].attributes for pid in u.purchases]) for u in self.s.users
-        ]
-        _, catalog = self.s.catalog_matrix()
-        model = SparsePreferenceGraph(cold_start_pivot=4, seed=self.seed)
-        model.prepare(catalog, per_user_purchased, n_shared)
-        service = QualityService(QualityAggregator().fit(self.s.signals))
-        return model, service
-
     def run(self, with_alpha_curve: bool = False) -> IntegrationReport:
-        idx = self.s.product_index()
-        n_shared = self.s.schema.n_shared
-        _, catalog = self.s.catalog_matrix()
-        model, service = self._build_agent_pieces()
+        model, idx, catalog, n_shared = prepare_preference_model(self.s, seed=self.seed)
+        service = QualityService(QualityAggregator().fit(self.s.signals))
 
         # Per-condition per-user NDCG, plus per-cohort accumulation.
         per_user: dict[str, list[float]] = {name: [] for name, _ in CONDITIONS}
         alphas: list[float] = []
         cohort_acc: dict[str, dict[str, list[float]]] = {}
         cohort_conf: dict[str, list[float]] = {}
+        # Per-cohort α-sweep NDCG curves (only when the optimal-α analysis is requested).
+        cohort_curve: dict[str, list[np.ndarray]] = {}
 
         for u in self.s.users:
             purchased = np.stack([idx[pid].attributes for pid in u.purchases])
@@ -139,14 +130,27 @@ class IntegrationHarness:
             cohort_acc.setdefault(u.cohort, {name: [] for name, _ in CONDITIONS})
             cohort_conf.setdefault(u.cohort, []).append(u.mean_confidence)
 
+            # Compute each stream once, then blend per condition — every condition is
+            # the same pref/quality re-weighted by a different α, so there is no need
+            # to recompute the preference score or re-query the QIL per condition.
+            pref = agent.preference_scores(cand_attrs)
+            quality, _evidence = agent.query_quality(cand_ids, u.use_profile)
+
             for name, alpha in CONDITIONS:
-                res = agent.rank(cand_ids, cand_attrs, u.use_profile, u.mean_confidence, alpha=alpha)
-                ranking = [cand_ids[i] for i in res.order]
+                a = alpha_from_confidence(u.mean_confidence) if alpha is None else alpha
+                ranking = [cand_ids[i] for i in np.argsort(-_blend(pref, quality, a))]
                 ndcg = metrics.ndcg_at_k(ranking, relevant, self.k)
                 per_user[name].append(ndcg)
                 cohort_acc[u.cohort][name].append(ndcg)
                 if name == "adaptive_alpha":
-                    alphas.append(res.alpha)
+                    alphas.append(a)
+
+            if with_alpha_curve:
+                cohort_curve.setdefault(u.cohort, []).append(np.array([
+                    metrics.ndcg_at_k(
+                        [cand_ids[i] for i in np.argsort(-_blend(pref, quality, a))], relevant, self.k)
+                    for a in _ALPHA_GRID
+                ]))
 
         conditions = {
             name: ConditionResult(
@@ -188,7 +192,19 @@ class IntegrationHarness:
             for name in ("preference_only", "quality_only")
         )
 
-        optimal_alpha = self._optimal_alpha_by_cohort(model, service) if with_alpha_curve else []
+        # Empirically optimal α per cohort (the honest adaptive-vs-fixed analysis):
+        # the α that maximizes mean NDCG@10, computed from the same per-user streams
+        # already swept above. Its mild cold->rich rise is the evidence that adaptive
+        # α points the right *direction* even though the documented slope overshoots.
+        optimal_alpha: list[tuple[str, float, float]] = []
+        if with_alpha_curve:
+            for c in ("cold", "warm", "rich"):
+                if c not in cohort_curve:
+                    continue
+                mean_curve = np.mean(cohort_curve[c], axis=0)
+                optimal_alpha.append(
+                    (c, float(np.mean(cohort_conf[c])), float(_ALPHA_GRID[int(mean_curve.argmax())]))
+                )
 
         return IntegrationReport(
             conditions=conditions,
@@ -197,44 +213,3 @@ class IntegrationHarness:
             milestone_pass=milestone_pass,
             optimal_alpha=optimal_alpha,
         )
-
-    def _optimal_alpha_by_cohort(
-        self, model: SparsePreferenceGraph, service: QualityService, grid: int = 21
-    ) -> list[tuple[str, float, float]]:
-        """Empirically optimal α per cohort, for the honest adaptive-vs-fixed analysis.
-
-        Sweeps α over a grid and reports, per history cohort, the mean credential
-        confidence and the α that maximizes mean NDCG@10. The (mild) rise of this
-        optimum from cold to rich cohorts is the evidence that the adaptive
-        *direction* is right even though its documented slope overshoots.
-        """
-        idx = self.s.product_index()
-        n_shared = self.s.schema.n_shared
-        _, catalog = self.s.catalog_matrix()
-        alphas = np.linspace(0.0, 1.0, grid)
-        scores: dict[str, list[np.ndarray]] = {}
-        confs: dict[str, list[float]] = {}
-        for u in self.s.users:
-            purchased = np.stack([idx[pid].attributes for pid in u.purchases])
-            state = model.fit(purchased, catalog, n_shared)
-            agent = AgentRecommender(model, state, service, n_shared)
-            cand_ids = u.candidates
-            cand_attrs = np.stack([idx[c].attributes for c in cand_ids])
-            relevant = set(u.relevant)
-            base = agent.rank(cand_ids, cand_attrs, u.use_profile, u.mean_confidence, alpha=0.0)
-            row = np.array([
-                metrics.ndcg_at_k(
-                    [cand_ids[i] for i in np.argsort(-_blend(base.pref, base.quality, a))],
-                    relevant, self.k,
-                )
-                for a in alphas
-            ])
-            scores.setdefault(u.cohort, []).append(row)
-            confs.setdefault(u.cohort, []).append(u.mean_confidence)
-        out: list[tuple[str, float, float]] = []
-        for c in ("cold", "warm", "rich"):
-            if c not in scores:
-                continue
-            mean_curve = np.mean(scores[c], axis=0)
-            out.append((c, float(np.mean(confs[c])), float(alphas[int(mean_curve.argmax())])))
-        return out
