@@ -53,8 +53,12 @@ The code seams exist; these need a resource only the operator can supply.
 1. **B1 — live ingestion fetch.** `_LiveConnector._fetch_pages` raises
    `NotImplementedError` ("PLUG API KEYS HERE", `qil/ingest/connectors.py`). The
    parsers and politeness layer are implemented and tested against injected fake
-   fetchers. *Needs:* Reddit/iFixit API access + Notebookcheck HTTP and rate-limit
-   credentials. *Unblock:* inject a real `fetch` callable.
+   fetchers. Real `fetch` callables now exist (`qil/ingest/live_fetch.py`); per the
+   [data-source strategy](data-source-strategy.md) the default `--live` wiring is
+   **Reddit-only (research/free tier)** and **iFixit/Notebookcheck are parked**
+   (retained + tested, not crawled by default). *Needs:* Reddit API credentials
+   (`REDDIT_CLIENT_ID/SECRET/USER_AGENT`) + a host to run the daily job. Reddit
+   commercial licensing must be priced before any sale (#47).
 2. **B2 — precision on real text (the gate-behind-the-gate).** Must reach **≥70%
    use-profile precision on real scraped text** (the 88.3% was a synthetic corpus).
    The transformer fine-tune and the real-annotated-corpus loader are scaffolded in
@@ -73,9 +77,12 @@ The code seams exist; these need a resource only the operator can supply.
    before/after relevance. The onboarding doc and the `eval/partner.py`
    measurement harness are ready. *Needs:* human recruitment/outreach and a
    deployed, stable v0.1 API.
-5. **Retailer outreach — Phase 2 critical path; must start now (Month 6).** The
-   long sales cycle gates the Phase 2 milestone. Templates are ready
-   (`retailer-data-sharing-agreement.md`, `retailer-return-signal-schema.md`).
+5. **Retailer outreach — STARTED now (Month 6); Phase 2 critical path.** The long
+   sales cycle gates the Phase 2 milestone, so outreach is **kicked off now** per
+   the [data-source strategy](data-source-strategy.md) (return data is the data
+   foundation a commercial product rests on). Templates are ready
+   (`retailer-data-sharing-agreement.md`, `retailer-return-signal-schema.md`);
+   schema ratification is in #14 (recommendations posted), outreach tracked in #48.
    *Needs:* business development + legal, not code.
 6. **A1 ops — public `@context` hosting.** The JSON-LD context exists in-repo
    (`contexts/`); it still needs to resolve at `https://preferencelayer.io/context/v1`.
@@ -114,8 +121,10 @@ DDoS protection; and credential/key rotation & refresh.
 
 1. **Now (sandbox):** build the `quality_dim` span-tagger stand-in (B-1 above) so
    the QIL ingest→refit story is genuinely end-to-end.
-2. **Now (operator, in parallel, non-code):** begin retailer and design-partner
-   outreach (long lead times), and open issue threads for the five §8 decisions.
+2. **Now (operator, in parallel, non-code):** retailer outreach is **underway**
+   (#48; the data foundation, per [data-source strategy](data-source-strategy.md));
+   continue design-partner outreach (long lead times) and open issue threads for the
+   five §8 decisions. iFixit/Notebookcheck outreach is **parked** (#47 context).
 3. **When resources land:** inject the B1 `fetch` → run B2 annotation + fine-tune →
    if ≥70% on real text, scale B4 coverage → recruit and measure Work Stream C →
    Phase 1 go/no-go.

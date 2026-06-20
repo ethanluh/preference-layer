@@ -61,8 +61,9 @@ non-parallelizable dependencies, per the plan's critical path:
    outreach (WS-C) until the three PTP endpoints + QIL `/quality` are deployed and
    stable. Shipping a broken API to partners early is worse than shipping late.
 2. **Retailer outreach has a long sales cycle.** It is a Phase 2 deliverable but
-   must *begin* in Phase 1 (~Month 6) — see the plan's critical path. Tracked here
-   as a Phase 1 kickoff item even though it lands later.
+   must *begin* in Phase 1 (~Month 6) — see the plan's critical path. **Kicked off
+   now** (#48) per the [data-source strategy](data-source-strategy.md): return data
+   is the data foundation, so outreach starts even though it lands later.
 
 ```
 Month:        4         5         6         7         8         9
@@ -149,9 +150,14 @@ WS-C (part.): ──────────────────────
 - **Hardened:** pipeline plumbing, normalization/dedup, the `PostgresSink`, the
   connector seam, and parsers for all three sources (Reddit/iFixit/Notebookcheck)
   are implemented and tested; `qil-ingest [--fixtures DIR] [--refit]` runs the job
-  (and chains into the refit) offline. The **only** unplugged piece is the network
-  call (inject a `fetch` callable wrapping PRAW/HTTP). Live fetch + a live Postgres
-  remain external-resource-gated.
+  (and chains into the refit) offline. Real `fetch` callables exist
+  (`qil/ingest/live_fetch.py`) and `qil-ingest --live` runs against live sources.
+- **Source strategy** (see [data-source-strategy.md](data-source-strategy.md)):
+  **Reddit-first**, on the research/free tier, is the only source wired by default;
+  **iFixit/Notebookcheck are parked** (retained + tested, opt-in via
+  `--source ifixit`), revisited only on a proven data gap. Live fetch + a live
+  Postgres remain external-resource-gated; Reddit commercial licensing is tracked
+  in #47.
 
 ### B2. Precision on **real** text (Months 4–5) — the gate-behind-the-gate
 - **Do:** annotate ~300 real samples (2 annotators, adjudicate); fine-tune a small
