@@ -42,6 +42,8 @@ def main() -> int:
     ap.add_argument("--category", default="All_Beauty", help="Amazon Reviews 2023 category config.")
     ap.add_argument("--label", default="all_beauty", help="PreferenceLayer category label.")
     ap.add_argument("--max-items", type=int, default=4000)
+    ap.add_argument("--max-interactions", type=int, default=None,
+                    help="Cap rows parsed from the interactions CSV (keeps large categories tractable).")
     ap.add_argument("--min-user-reviews", type=int, default=5)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", type=str, default=None)
@@ -57,6 +59,7 @@ def main() -> int:
     try:
         cat = amazon.load_category(
             args.category, args.label, max_items=args.max_items,
+            max_interactions=args.max_interactions,
             min_user_reviews=args.min_user_reviews, seed=args.seed,
         )
     except ImportError as e:
@@ -99,6 +102,7 @@ def main() -> int:
     if args.json:
         payload = {
             "config": {"category": args.category, "label": args.label, "max_items": args.max_items,
+                       "max_interactions": args.max_interactions,
                        "min_user_reviews": args.min_user_reviews, "seed": args.seed,
                        "n_items": len(cat.items), "n_users": len(user_ids)},
             "ndcg": {name: r.ndcg for name, r in results.items()},

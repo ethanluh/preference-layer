@@ -3,6 +3,7 @@
     "category": "All_Beauty",
     "label": "all_beauty",
     "max_items": 4000,
+    "max_interactions": null,
     "min_user_reviews": 5,
     "seed": 7,
     "n_items": 112590,
