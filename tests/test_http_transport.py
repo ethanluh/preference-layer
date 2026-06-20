@@ -57,6 +57,8 @@ def test_get_preference_ok_and_resigned():
     r = client.request("GET", "/preference", json={"category": "laptops"}, headers=_auth(token))
     assert r.status_code == 200
     body = r.json()
+    # The internal store "status" key must not leak into the response body (§4.2).
+    assert "status" not in body
     assert set(body["coverage"]) == {"performance", "portability", "price_sensitivity"}
     # The returned credential is freshly re-signed and verifies under the user key.
     cred = PreferenceCredential.from_dict(body["credential"])
@@ -85,6 +87,8 @@ def test_post_outcome_updates_and_resigns_over_http():
     })
     assert r.status_code == 202
     body = r.json()
+    # The internal store "status" key must not leak into the response body (§4.3).
+    assert "status" not in body
     assert body["update_queued"] is True
     assert "performance" in body["affected_nodes"]
     # Re-signed credential survives a subsequent GET.
