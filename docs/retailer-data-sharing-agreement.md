@@ -77,7 +77,7 @@ Each a "Party" and together the "Parties."
 3.1 **In scope.** Retailer will share only Return Signal records conforming to
 the schema in [`retailer-return-signal-schema.md`](retailer-return-signal-schema.md):
 `product_id`, `return_reason`, `use_context`, and the coarse non-identifying
-fields enumerated there (`category`, bucketed `return_window_days`).
+fields enumerated there (`category`, `return_window_bucket`).
 
 3.2 **Out of scope (must never be transmitted).** Customer identifiers; order
 identifiers; names; contact details; addresses (below country level); payment
@@ -89,8 +89,9 @@ transmission. PreferenceLayer never receives raw or pre-anonymization data.
 **[legal review required.]**
 
 3.4 **k-anonymity floor.** Retailer suppresses any (`product_id`,
-`return_reason`, `use_context`) cell with a count below `[k = 5]` before
-transmission, to prevent re-identification of rare returns. See the schema doc.
+`return_reason`, `use_context`, `category`, `return_window_bucket`) cell with a
+count below `[k = 5]` before transmission, to prevent re-identification of rare
+returns. See the schema doc.
 
 ---
 
