@@ -27,6 +27,15 @@ The immediate open questions are:
 
 ---
 
+## Branch Naming
+
+Name branches `<type>/<short-description>`, where `<type>` is one of `docs`,
+`feature`, `bug`, `fix`, etc., followed by a slash and a brief kebab-case
+description — e.g. `feature/new-sign-in`, `docs/update-protocol-spec`,
+`fix/credential-resign-bug`.
+
+---
+
 ## Merging
 
 Pull requests are integrated with GitHub's **Rebase and merge** — not *Squash and merge*,
