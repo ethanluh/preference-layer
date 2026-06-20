@@ -24,12 +24,14 @@ schema = ["jsonschema>=4.0"] # full Draft 2020-12 validation of PTP credentials 
 http = ["fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27"]  # serve the three PTP endpoints over HTTP
 langchain = ["langchain-core>=0.3"]  # expose the PTP tools as LangChain StructuredTools
 anthropic = ["anthropic>=0.40"]  # only for the optional live Claude tool-selection test; the adapter itself needs no SDK
+b2 = ["transformers>=4.30", "torch>=2.0"]  # fine-tune the use-profile head on real text (Work Stream B2); CPU/GPU
 
 [project.scripts]
 preflayer = "preferencelayer.cli:main"
 preflayer-validate = "preferencelayer.ptp.schema_validate:main"
 qil-refit = "preferencelayer.qil.cli:refit_main"
 qil-ingest = "preferencelayer.qil.cli:ingest_main"
+qil-b2 = "preferencelayer.qil.cli:b2_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

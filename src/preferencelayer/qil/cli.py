@@ -47,7 +47,20 @@ from .ingest import (
     make_reddit_fetch,
     run_daily,
 )
+from .harness import (
+    TfidfBaselineClassifier,
+    TransformerClassifier,
+    load_controlled_smoke,
+    load_real_corpus,
+    measure,
+)
 from .refit import InMemoryPosteriorSink, PosteriorSink, run_nightly_refit
+
+_B2_BANNER = {
+    "pass": ">= 70% -> PROCEED to coverage (B4).",
+    "recoverable": "60-70% -> assess whether MORE ANNOTATION recovers it.",
+    "escalate": "< 60% -> automation story does NOT hold; ESCALATE before scaling.",
+}
 
 
 def seconds_until_next_run(now: datetime, interval_hours: float) -> float:
@@ -314,6 +327,51 @@ def refit_main(argv: list[str] | None = None) -> int:
         print(f"  next refit in {delay / 3600.0:.2f}h (Ctrl-C to stop)")
         time.sleep(delay)
         _run_once(sink)
+
+
+def b2_main(argv: list[str] | None = None) -> int:
+    """Measure use-profile extraction precision and map it to the B2 decision band.
+
+    ``--smoke`` runs on the controlled corpus (plumbing check; NOT a real-text
+    result); ``--corpus PATH`` runs on an annotated real-text JSONL corpus (the
+    one ``annotate.adjudicate`` produces). This is the console-script twin of
+    ``experiments/run_qil_realtext_harness.py``.
+    """
+    ap = argparse.ArgumentParser(
+        prog="qil-b2",
+        description="Measure use-profile extraction precision on real text (Work Stream B2).",
+    )
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--corpus", type=str, help="path to an annotated real-text JSONL corpus")
+    src.add_argument("--smoke", action="store_true",
+                     help="run on the controlled corpus (plumbing check; NOT a real-text result)")
+    ap.add_argument("--model", choices=["tfidf", "transformer"], default="tfidf")
+    ap.add_argument("--out", type=str, default=None, help="optional path to write the result JSON")
+    args = ap.parse_args(argv)
+
+    if args.smoke:
+        split = load_controlled_smoke()
+        print("!! SMOKE TEST on the CONTROLLED corpus -- NOT a real-text result.")
+        print("!! Real-text precision is UNVERIFIED until --corpus points at an")
+        print("!! annotated scraped corpus (~300 adjudicated samples).\n")
+    else:
+        split = load_real_corpus(args.corpus)
+
+    classifier = TransformerClassifier() if args.model == "transformer" else TfidfBaselineClassifier()
+    result = measure(classifier, split)
+
+    print(f"model:            {result.model}")
+    print(f"corpus:           {result.source} (real_text={result.is_real_text})")
+    print(f"macro precision:  {result.macro_precision:.4f}  (baseline {result.baseline_precision:.4f})")
+    print(f"checkpoint band:  {result.band.upper()} -- {_B2_BANNER[result.band]}")
+    print(f"verified on REAL text: {result.verified_on_real_text}")
+    if not result.is_real_text:
+        print("\n(reminder: band/precision above are controlled-corpus; do not quote as real-text.)")
+
+    if args.out:
+        Path(args.out).write_text(json.dumps(result.to_json(), indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
