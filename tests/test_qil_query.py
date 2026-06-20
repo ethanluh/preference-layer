@@ -46,3 +46,22 @@ def test_mcp_handler_dispatch():
                        {"product_id_a": "good", "product_id_b": "bad", "use_profile": "gaming"})
     assert cmp["status"] == 200
     assert handler.call("bogus_tool", {})["status"] == 400
+
+
+def test_quality_rejects_empty_use_profile():
+    svc = _service()
+    for bad in ("", "   "):
+        res = svc.quality("good", bad)
+        assert res["status"] == 400
+        assert "use_profile" in res["detail"]
+
+
+def test_compare_rejects_empty_use_profile():
+    svc = _service()
+    assert svc.compare("good", "bad", "")["status"] == 400
+
+
+def test_mcp_handler_rejects_empty_use_profile():
+    # The MCP surface delegates to the service, so the guard covers it too.
+    handler = QILToolHandler(_service())
+    assert handler.call("get_quality", {"product_id": "good", "use_profile": ""})["status"] == 400

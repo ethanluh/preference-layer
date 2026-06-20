@@ -122,6 +122,12 @@ def build_app(
             raise HTTPException(status_code=404, detail=result.get("detail", "not found"))
         if status == 403:
             raise HTTPException(status_code=403, detail=result.get("detail", "forbidden"))
+        if status == 429:
+            # DP privacy budget exhausted; preserve the consent signal in the body.
+            raise HTTPException(status_code=429, detail={
+                "detail": result.get("detail", "privacy budget exhausted"),
+                "consent_required": result.get("consent_required", True),
+            })
         return {k: v for k, v in result.items() if k != "status"}
 
     @app.get("/healthz")
