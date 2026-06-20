@@ -2,6 +2,7 @@
   "guides": [
     {
       "guideid": 12345,
+      "author": "synthetic_user_ifixit",
       "title": "ThinkPad X1 Carbon Gen 12 Fan Replacement",
       "introduction": "The cooling fan in the X1 Carbon Gen 12 can fail after sustained thermal load, causing throttling under prolonged compute.",
       "conclusion": "Replacing the fan restores sustained performance and fixes the throttling.",
