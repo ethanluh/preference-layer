@@ -12,6 +12,19 @@ from .corpus import Corpus, Sample, generate
 from .eval import GATE_PRECISION, ClassificationReport, evaluate
 from .extract import ExtractedSignal, QILExtractor, SoftmaxClassifier, TfidfVectorizer
 from .gp import GPHyperparams, GPPosterior, fit_gp_posterior
+from .harness import (
+    GATE_PASS,
+    GATE_RECOVERABLE,
+    HarnessResult,
+    LabeledSplit,
+    TfidfBaselineClassifier,
+    TransformerClassifier,
+    UseProfileClassifier,
+    checkpoint_band,
+    load_controlled_smoke,
+    load_real_corpus,
+    measure,
+)
 from .mcp_server import QIL_TOOLS, QILToolHandler
 from .query import QualityService
 from .refit import (
@@ -49,4 +62,15 @@ __all__ = [
     "PosteriorSink",
     "InMemoryPosteriorSink",
     "PostgresPosteriorSink",
+    "UseProfileClassifier",
+    "TfidfBaselineClassifier",
+    "TransformerClassifier",
+    "LabeledSplit",
+    "HarnessResult",
+    "load_controlled_smoke",
+    "load_real_corpus",
+    "checkpoint_band",
+    "measure",
+    "GATE_PASS",
+    "GATE_RECOVERABLE",
 ]
