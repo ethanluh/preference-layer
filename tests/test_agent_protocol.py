@@ -153,3 +153,58 @@ def test_credential_roundtrip_ranks_relevant_set():
     # Well above the ~0.18 random floor, and quality adds to preference alone.
     assert np.mean(blend) > 0.5
     assert np.mean(blend) >= np.mean(pref_only)
+
+
+# ------------------------------------------------ ProtocolAgent over LangChain tools
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+class _LangChainPTPShim:
+    """A ``.call``-compatible adapter that routes through LangChain PTP tools.
+
+    Lets the existing :class:`ProtocolAgent` (which expects ``call(name, args) ->
+    dict``) drive the credential store *through* the LangChain ``StructuredTool``
+    layer, so the same agent path is exercised across frameworks. The tools return
+    JSON strings (LangChain contract); this shim invokes the matching tool and
+    parses the result back to a dict.
+    """
+
+    def __init__(self, tools):
+        self._tools = {t.name: t for t in tools}
+
+    def call(self, name: str, arguments: dict) -> dict:
+        args = {k: v for k, v in (arguments or {}).items() if v is not None}
+        return json.loads(self._tools[name].invoke(args))
+
+
+def test_protocol_agent_over_langchain_tools_round_trip():
+    pytest.importorskip("langchain_core")
+    from preferencelayer.mcp.langchain_tools import build_langchain_tools
+
+    store, _ = _store_with_credential(confidence=0.8)
+    token = store.authorize_agent("agent.shop", scope=["laptops"])
+    ptp_shim = _LangChainPTPShim(build_langchain_tools(PTPToolHandler(store, token)))
+
+    agent = ProtocolAgent(ptp_shim, _qil_handler(), SCHEMA)
+    attrs = np.stack([_attrs(performance=0.8), _attrs(performance=0.8)])
+    rec = agent.recommend("laptops", "gaming", ["good", "bad"], attrs)
+    assert rec.status == 200
+    assert rec.order[0] == 0  # quality breaks the preference tie, same as the direct path
+    assert set(rec.coverage) == {"performance", "portability"}
+
+
+def test_protocol_agent_over_langchain_tools_denied_after_revocation():
+    pytest.importorskip("langchain_core")
+    from preferencelayer.mcp.langchain_tools import build_langchain_tools
+
+    store, _ = _store_with_credential()
+    token = store.authorize_agent("agent.shop", scope=["laptops"])
+    store.revoke_agent("agent.shop")
+    ptp_shim = _LangChainPTPShim(build_langchain_tools(PTPToolHandler(store, token)))
+    agent = ProtocolAgent(ptp_shim, _qil_handler(), SCHEMA)
+    rec = agent.recommend("laptops", "gaming", ["good", "bad"],
+                          np.stack([_attrs(performance=0.5), _attrs(performance=0.5)]))
+    assert rec.status == 403
+    assert rec.order == []
