@@ -2,7 +2,7 @@
   "config": {
     "category": "Cell_Phones_and_Accessories",
     "label": "cell_phones",
-    "max_items": 6000,
+    "max_items": 184070,
     "max_interactions": 3000000,
     "min_user_reviews": 5,
     "seed": 7,
