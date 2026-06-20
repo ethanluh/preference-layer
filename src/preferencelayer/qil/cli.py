@@ -201,17 +201,25 @@ _LIVE_IFIXIT_URLS = {
 }
 
 
-def build_live_connectors(category: str, *, rate: float = 1.0) -> list:
-    """Assemble live Reddit + iFixit connectors from environment credentials.
+def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit",),
+                          rate: float = 1.0) -> list:
+    """Assemble live connectors from environment credentials.
 
     Reads ``REDDIT_CLIENT_ID`` / ``REDDIT_CLIENT_SECRET`` / ``REDDIT_USER_AGENT``;
     injects the real ``fetch`` callables (``live_fetch``) and a token-bucket
     ``RateLimiter`` into the existing connectors. Raises ``SystemExit`` with a
-    clear message when credentials are absent.
+    clear message when Reddit credentials are absent.
 
-    Notebookcheck is intentionally omitted: it has no JSON API and needs a
-    site-specific HTML->records parser (out of in-sandbox scope); inject one via
-    ``make_http_fetch(parser=...)`` + ``NotebookcheckConnector`` to add it.
+    ``sources`` selects which sources to wire. **Default: Reddit only** -- per the
+    data-source strategy (``docs/data-source-strategy.md``), Reddit runs on the
+    research/free tier (research-stage) and is the only source wired by default;
+    iFixit and Notebookcheck are **parked** (their connectors/parsers are retained
+    and tested, but not crawled by default). Opt iFixit in explicitly with
+    ``sources=("reddit", "ifixit")``.
+
+    Notebookcheck is never auto-wired: it has no JSON API and needs a site-specific
+    HTML->records parser (inject one via ``make_http_fetch(parser=...)`` +
+    ``NotebookcheckConnector``).
     """
     user_agent = os.environ.get("REDDIT_USER_AGENT")
     client_id = os.environ.get("REDDIT_CLIENT_ID")
@@ -223,16 +231,19 @@ def build_live_connectors(category: str, *, rate: float = 1.0) -> list:
         )
 
     connectors: list = []
-    reddit_fetch = make_reddit_fetch(client_id, client_secret, user_agent)
-    connectors.append(RedditConnector(
-        category, list(_LIVE_SUBREDDITS.get(category, ())),
-        fetch=reddit_fetch, rate_limiter=RateLimiter(rate=rate),
-    ))
-    ifixit_fetch = make_http_fetch(user_agent=user_agent, crawl_delay=1.0)
-    connectors.append(IFixitConnector(
-        category, list(_LIVE_IFIXIT_URLS.get(category, ())),
-        fetch=ifixit_fetch, rate_limiter=RateLimiter(rate=rate),
-    ))
+    if "reddit" in sources:
+        reddit_fetch = make_reddit_fetch(client_id, client_secret, user_agent)
+        connectors.append(RedditConnector(
+            category, list(_LIVE_SUBREDDITS.get(category, ())),
+            fetch=reddit_fetch, rate_limiter=RateLimiter(rate=rate),
+        ))
+    if "ifixit" in sources:
+        # Parked by default; only wired when explicitly requested.
+        ifixit_fetch = make_http_fetch(user_agent=user_agent, crawl_delay=1.0)
+        connectors.append(IFixitConnector(
+            category, list(_LIVE_IFIXIT_URLS.get(category, ())),
+            fetch=ifixit_fetch, rate_limiter=RateLimiter(rate=rate),
+        ))
     return connectors
 
 
@@ -247,6 +258,9 @@ def ingest_main(argv: list[str] | None = None) -> int:
     src.add_argument("--live", action="store_true",
                      help="ingest from live sources using credentials in the environment "
                           "(REDDIT_CLIENT_ID/SECRET/USER_AGENT); see build_live_connectors")
+    ap.add_argument("--source", action="append", choices=["reddit", "ifixit"], dest="sources",
+                    help="live source to wire (repeatable; default: reddit only). iFixit is "
+                         "parked by default -- pass --source ifixit to opt in. Only used with --live.")
     ap.add_argument("--category", default="laptops", help="product category (default: laptops)")
     ap.add_argument("--refit", action="store_true",
                     help="after ingest, run the posterior refit end-to-end and report counts")
@@ -261,7 +275,7 @@ def ingest_main(argv: list[str] | None = None) -> int:
     extractor = QILExtractor().fit(corpus.train)
 
     if args.live:
-        connectors = build_live_connectors(args.category)
+        connectors = build_live_connectors(args.category, sources=tuple(args.sources or ("reddit",)))
     else:
         connectors = _connectors_from_dir(args.fixtures, args.category)
     sink = InMemorySink()

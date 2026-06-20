@@ -137,13 +137,23 @@ def test_build_live_connectors_requires_credentials(monkeypatch):
     assert "REDDIT_CLIENT_ID" in str(exc.value)
 
 
-def test_build_live_connectors_assembles_reddit_and_ifixit(monkeypatch):
+def test_build_live_connectors_defaults_to_reddit_only(monkeypatch):
+    # Data-source strategy: Reddit is the only source wired by default; iFixit is
+    # parked (its connector is retained but not crawled unless explicitly opted in).
     for key, val in _REDDIT_ENV.items():
         monkeypatch.setenv(key, val)
     connectors = build_live_connectors("laptops")
     types = {type(c) for c in connectors}
-    assert RedditConnector in types and IFixitConnector in types
-    # Each live connector got a real injected fetch (not the unconfigured scaffold).
+    assert types == {RedditConnector}
+    assert all(c._fetch is not None for c in connectors)  # real injected fetch
+
+
+def test_build_live_connectors_opts_in_ifixit_explicitly(monkeypatch):
+    for key, val in _REDDIT_ENV.items():
+        monkeypatch.setenv(key, val)
+    connectors = build_live_connectors("laptops", sources=("reddit", "ifixit"))
+    types = {type(c) for c in connectors}
+    assert types == {RedditConnector, IFixitConnector}
     assert all(c._fetch is not None for c in connectors)
 
 
