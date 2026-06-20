@@ -71,9 +71,18 @@ preferencelayer/
 
 ## Status
 
-**Phase 0 complete (both research gates passed); Phase 1 integration
-demonstrated.** The repository contains a working, tested implementation of the
-research prototype alongside the design docs.
+**Phase 1 in progress.** Phase 0 is complete — both research gates passed (gate
+decision recorded in [`docs/implementation-plan.md`](docs/implementation-plan.md))
+— and the project has formally advanced to Phase 1 (Core Protocol & Minimal Viable
+Data Product). The milestone breakdown, sequencing, and definitions-of-done are in
+[`docs/phase1-kickoff.md`](docs/phase1-kickoff.md). The repository contains a
+working, tested implementation of the research prototype alongside the design docs.
+
+**First Phase 1 deliverable landed:** the user-controlled **persistent credential
+store** (Work Stream A, Months 5–6) — SQLite-backed and encrypted at rest, with a
+persistent Ed25519 identity (optionally passphrase-locked) and persistent agent
+tokens, driven by the `preflayer init / view / authorize / revoke / export /
+delete` CLI.
 
 - **Claim 1 (preference graph):** the **sparse DAG preference graph beats the strong
   flat-vector baseline by +9.7% NDCG@10 on cross-category transfer** (laptops →
@@ -144,6 +153,18 @@ python experiments/run_phase1_cold_start.py    # adaptive α in the zero-history
 python -m pytest                               # full test suite
 ```
 
+The persistent credential store (Phase 1) is driven through the `preflayer` CLI;
+it writes to `$PREFLAYER_HOME` (default `~/.preflayer`):
+
+```bash
+preflayer init --seed-demo                     # create identity + store, seed a credential
+preflayer authorize agent.shop --scope laptops # mint a scoped, expiring agent token
+preflayer view                                 # identity, credentials, active tokens
+preflayer revoke agent.shop                    # revoke an agent's tokens
+preflayer export --out bundle.json             # export the signed credential(s)
+preflayer delete --yes                         # irreversibly wipe the store
+```
+
 The Amazon Reviews 2023 real-data path needs the optional extra and network access:
 `pip install -e ".[amazon]"`, then `python experiments/run_amazon_realdata.py` (see
 [`docs/phase1-amazon-realdata.md`](docs/phase1-amazon-realdata.md)).
@@ -152,6 +173,7 @@ The Amazon Reviews 2023 real-data path needs the optional extra and network acce
 
 ## Quick Links
 
+- [Phase 1 Kickoff Plan — Milestones & Sequencing](docs/phase1-kickoff.md)
 - [Phase 0 Results — Claim 1 (Preference Graph)](docs/phase0-results.md)
 - [Phase 0 Results — Claim 2 (QIL Extraction)](docs/phase0-qil-results.md)
 - [Phase 1 Integration Results — the α-Blend](docs/phase1-integration-results.md)
