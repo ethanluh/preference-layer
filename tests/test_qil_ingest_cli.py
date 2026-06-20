@@ -11,14 +11,23 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from preferencelayer.qil import QILExtractor, generate
 from preferencelayer.qil.cli import (
     _row_to_signal,
     build_demo_registry,
+    build_live_connectors,
     ingest_main,
     run_ingest,
 )
-from preferencelayer.qil.ingest import FixtureConnector, InMemorySink, ProductSignalRow
+from preferencelayer.qil.ingest import (
+    FixtureConnector,
+    IFixitConnector,
+    InMemorySink,
+    ProductSignalRow,
+    RedditConnector,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ingest"
 
@@ -109,3 +118,43 @@ def test_ingest_main_refit_flag(tmp_path, capsys):
     rc = ingest_main(["--fixtures", str(tmp_path), "--refit"])
     assert rc == 0
     assert "refit: wrote" in capsys.readouterr().out
+
+
+# --- live ingestion wiring (B1) --------------------------------------------
+
+_REDDIT_ENV = {
+    "REDDIT_CLIENT_ID": "cid",
+    "REDDIT_CLIENT_SECRET": "secret",
+    "REDDIT_USER_AGENT": "pref-bot/0.1",
+}
+
+
+def test_build_live_connectors_requires_credentials(monkeypatch):
+    for key in _REDDIT_ENV:
+        monkeypatch.delenv(key, raising=False)
+    with pytest.raises(SystemExit) as exc:
+        build_live_connectors("laptops")
+    assert "REDDIT_CLIENT_ID" in str(exc.value)
+
+
+def test_build_live_connectors_assembles_reddit_and_ifixit(monkeypatch):
+    for key, val in _REDDIT_ENV.items():
+        monkeypatch.setenv(key, val)
+    connectors = build_live_connectors("laptops")
+    types = {type(c) for c in connectors}
+    assert RedditConnector in types and IFixitConnector in types
+    # Each live connector got a real injected fetch (not the unconfigured scaffold).
+    assert all(c._fetch is not None for c in connectors)
+
+
+def test_ingest_main_live_without_credentials_errors(monkeypatch):
+    for key in _REDDIT_ENV:
+        monkeypatch.delenv(key, raising=False)
+    with pytest.raises(SystemExit):
+        ingest_main(["--live"])
+
+
+def test_ingest_main_requires_a_source():
+    # Neither --fixtures nor --live -> argparse error (exit code 2).
+    with pytest.raises(SystemExit):
+        ingest_main([])
