@@ -13,9 +13,11 @@ import pytest
 
 from preferencelayer.agent.recommender import AgentRecommender
 from preferencelayer.eval.partner import (
+    DEFAULT_MIN_QUERIES,
     PartnerQuery,
     PartnerResult,
     gate_passed,
+    is_underpowered,
     measure_partner,
     partner_improved,
 )
@@ -57,7 +59,7 @@ def _agent(weight, quality_by_pid, **kw) -> AgentRecommender:
 
 
 # --------------------------------------------------------------------------- task builders
-def _improving_queries(n: int = 12) -> list[PartnerQuery]:
+def _improving_queries(n: int = 20) -> list[PartnerQuery]:
     """Tasks where preference and quality *disagree*, and preference is right.
 
     The relevant item is the one the user's preference weight loves, but it has
@@ -65,6 +67,10 @@ def _improving_queries(n: int = 12) -> list[PartnerQuery]:
     ranking puts it last. The credential ("after") leans on preference (high
     confidence) and surfaces it. This makes after > before deterministically,
     without relying on argsort tie-break order.
+
+    Defaults to 20 queries — at the ``DEFAULT_MIN_QUERIES`` power floor in
+    :mod:`preferencelayer.eval.partner` — so ``partner_improved`` reports the
+    improvement instead of refusing the verdict as underpowered.
     """
     queries = []
     for i in range(n):
@@ -124,10 +130,10 @@ def _flat_result(partner_id="p_flat") -> PartnerResult:
 # --------------------------------------------------------------------------- shape / wiring
 def test_result_shape_and_per_query_counts():
     res = _improving_result()
-    assert res.n_queries == 12
+    assert res.n_queries == 20
     assert res.k == 10
-    assert len(res.before.per_query_ndcg) == 12
-    assert len(res.after.per_query_ndcg) == 12
+    assert len(res.before.per_query_ndcg) == 20
+    assert len(res.after.per_query_ndcg) == 20
     assert 0.0 <= res.before.ndcg <= 1.0
     assert 0.0 <= res.after.ndcg <= 1.0
 
@@ -227,3 +233,59 @@ def test_gate_required_threshold_is_configurable():
     results = [_improving_result("p1"), _improving_result("p2"), _flat_result("p3")]
     assert gate_passed(results, required=2).passed is True
     assert gate_passed(results, required=3).passed is False
+
+
+# --------------------------------------------------------------------------- power guard
+def _small_improving_result(partner_id="p_small", n=5) -> PartnerResult:
+    """An improving task with too few queries (below the power floor).
+
+    Same construction as ``_improving_result`` (the credential genuinely helps),
+    but with only ``n`` queries — fewer than ``DEFAULT_MIN_QUERIES`` — so the
+    significance verdict cannot be trusted.
+    """
+    qs = _improving_queries(n=n)
+    quality = {}
+    for q in qs:
+        quality[q.candidate_ids[0]] = 0.1
+        quality[q.candidate_ids[1]] = 0.9
+        quality[q.candidate_ids[2]] = 0.5
+    agent = _agent([1.0, 1.0], quality)
+    return measure_partner(partner_id, agent, qs, mean_confidence=0.9)
+
+
+def test_underpowered_result_has_positive_gain_but_is_not_improved():
+    """A tiny sample with a real (but underpowered) gain is not reported improved."""
+    res = _small_improving_result()
+    assert res.n_queries < DEFAULT_MIN_QUERIES
+    # The credential genuinely helps on these queries...
+    assert res.abs_gain > 0.0
+    # ...but with too few queries we refuse the significance verdict.
+    assert is_underpowered(res) is True
+    assert res.underpowered is True
+    assert partner_improved(res) is False
+    assert res.improved is False
+
+
+def test_min_queries_guard_can_be_disabled():
+    """Setting min_queries=0 restores the significance-only verdict."""
+    res = _small_improving_result()
+    assert partner_improved(res, min_queries=0) is True
+    assert is_underpowered(res, min_queries=0) is False
+
+
+def test_gate_not_tripped_by_underpowered_partners():
+    """Two underpowered 'improvers' must not pass the gate; they are surfaced."""
+    results = [
+        _small_improving_result("p1"),
+        _small_improving_result("p2"),
+        _flat_result("p3"),
+    ]
+    report = gate_passed(results)
+    assert report.n_improved == 0
+    assert report.passed is False
+    assert set(report.underpowered_partners) >= {"p1", "p2"}
+    # With the guard disabled, the same two now count as improvers and pass.
+    report_no_guard = gate_passed(results, min_queries=0)
+    assert report_no_guard.n_improved == 2
+    assert report_no_guard.passed is True
+    assert report_no_guard.underpowered_partners == []

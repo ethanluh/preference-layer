@@ -129,8 +129,14 @@ SDK, LangChain, etc.).
 | `get_quality` | to fetch use-profile-conditioned quality + failure rate for a product |
 | `compare_quality` | to compare two products for a given use profile |
 
-`get_preference` returns, among other fields, a **`mean_confidence`** — keep it;
-it drives the blend weight α in step 3.
+`get_preference` returns, among other fields, a **`confidence`** (the credential's
+mean node confidence) — keep it; it drives the blend weight α in step 3. The
+harness parameter is named `mean_confidence`, so map it explicitly:
+
+```python
+response = get_preference(...)        # PTP get_preference / GET /preference
+mean_confidence = response["confidence"]
+```
 
 ### Wiring it to the ranking code
 
@@ -150,7 +156,7 @@ agent = AgentRecommender(
 
 result = agent.rank(
     candidate_ids, candidate_attrs, use_profile="professional",
-    mean_confidence=mean_confidence,   # from get_preference
+    mean_confidence=mean_confidence,   # = get_preference response["confidence"]
 )
 ranking = [candidate_ids[i] for i in result.order]
 ```
@@ -215,7 +221,7 @@ result = measure_partner(
     partner_id="acme-agent",
     agent=agent,                 # the AgentRecommender from step 2
     queries=queries,
-    mean_confidence=mean_confidence,   # from get_preference
+    mean_confidence=mean_confidence,   # = get_preference response["confidence"]
     k=10,
 )
 
@@ -266,7 +272,8 @@ print("improved:", report.improved_partners)
 Per [`CONTRIBUTING.MD`](../CONTRIBUTING.MD), when you report a measurement,
 record:
 
-- the credential's `mean_confidence` and how it was seeded (which outcomes);
+- the credential's `confidence` (the `mean_confidence` you passed) and how it was
+  seeded (which outcomes);
 - the number of queries and how ground truth was derived;
 - the metric (`k`) and the `partner_improved` thresholds you used;
 - the `bootstrap_seed` (default `0`) so the p-value is reproducible.
