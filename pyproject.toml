@@ -23,6 +23,7 @@ api = ["fastapi>=0.110", "uvicorn>=0.27"]   # serve the QIL /quality + /compare 
 schema = ["jsonschema>=4.0"] # full Draft 2020-12 validation of PTP credentials (validator has a built-in fallback otherwise)
 http = ["fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27"]  # serve the three PTP endpoints over HTTP
 langchain = ["langchain-core>=0.3"]  # expose the PTP tools as LangChain StructuredTools
+anthropic = ["anthropic>=0.40"]  # only for the optional live Claude tool-selection test; the adapter itself needs no SDK
 
 [project.scripts]
 preflayer = "preferencelayer.cli:main"
