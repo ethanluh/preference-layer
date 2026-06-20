@@ -78,6 +78,24 @@ def test_ingest_main_over_clean_dir(tmp_path, capsys):
     assert "qil-ingest:" in out and "written=" in out
 
 
+def test_ingest_main_flows_dict_shaped_structured_fixture(tmp_path, capsys):
+    # A dict-shaped iFixit payload (container key "guides") must flow through the
+    # CLI via the live connector's real _parse -- not be silently skipped.
+    fixture = tmp_path / "ifixit_guides.json"
+    fixture.write_text(json.dumps({"guides": [{
+        "guideid": 999,
+        "title": "ThinkPad X1 Carbon Gen 12 Fan Replacement",
+        "introduction": "The X1 Carbon Gen 12 fan fails under sustained thermal load and throttles.",
+        "url": "https://www.ifixit.com/Guide/999",
+        "favorites": 4,
+    }]}))
+    rc = ingest_main(["--fixtures", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "fetched=1" in out
+    assert "lenovo-thinkpad-x1-carbon-gen12" in out  # matched + written
+
+
 def test_ingest_main_refit_flag(tmp_path, capsys):
     fixture = tmp_path / "reddit_sample.json"
     fixture.write_text(json.dumps([{
