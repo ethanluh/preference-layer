@@ -50,6 +50,21 @@ class QualityService:
         }
 
     def compare(self, product_id_a: str, product_id_b: str, use_profile: str) -> dict:
+        """Compare two products' per-dimension quality posteriors.
+
+        Both products are evaluated at the aggregator's single ``query_time``
+        (``self.agg.query_time``, days since release): the GP ``posterior_mean``
+        and ``posterior_std`` read here are the values at that shared point in
+        time. The A-vs-B difference and ``P(A > B)`` are therefore only
+        meaningful when both products are compared at the *same* ``query_time``
+        — which is always the case for a given aggregator instance, since it
+        holds one ``query_time`` for all products.
+
+        Callers who need to compare products at *different* ages (e.g. a
+        6-month-old A against a brand-new B) must fit/evaluate against separate
+        aggregator instances and reconcile the results themselves; this method
+        does not mix query times.
+        """
         dims = {}
         for dim in QUALITY_DIMS:
             pa = self.agg.quality.get((product_id_a, use_profile, dim))
