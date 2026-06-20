@@ -25,7 +25,7 @@ free:
 | popularity | 0.0109 |
 
 **preference_graph vs flat_attribute: −20.8% (p = 0.0004).**
-*(Reproduce: `python experiments/run_amazon_realdata.py`.)*
+*(Reproduce: `python experiments/run_amazon_realdata.py --max-items 112590` — All_Beauty's single metadata shard has 112,590 items.)*
 
 Two honest findings:
 
@@ -51,11 +51,9 @@ was rerun on a category ~29× larger by user count: `Cell_Phones_and_Accessories
 (184,070 items, **19,498** users with ≥5 reviews; interactions parsed up to the
 `--max-interactions 3000000` cap).
 
-> Note: `--max-items` is checked *per metadata shard*, not per row, so `--max-items 6000`
-> here loads the whole first shard (184,070 items) rather than stopping at 6,000 — which
-> is what the JSON config (`max_items: 6000`, `n_items: 184070`) honestly records. The
-> larger load is harmless (more candidates), but the flag is coarser than it looks; making
-> the cap row-precise is a tracked follow-up.
+> Note: `--max-items` is row-precise (fixed in #6), so this run pins it to the full size
+> of the category's first metadata shard (184,070 items) — which is what the JSON config
+> (`max_items: 184070`, `n_items: 184070`) records and what reproduces the numbers below.
 
 | model | NDCG@10 |
 |-------|--------:|
@@ -65,7 +63,7 @@ was rerun on a category ~29× larger by user count: `Cell_Phones_and_Accessories
 | popularity | 0.0189 |
 
 **preference_graph vs flat_attribute: −50.2% (p = 0.0002).**
-*(Reproduce: `python experiments/run_amazon_realdata.py --category Cell_Phones_and_Accessories --label cell_phones --max-items 6000 --max-interactions 3000000`.)*
+*(Reproduce: `python experiments/run_amazon_realdata.py --category Cell_Phones_and_Accessories --label cell_phones --max-items 184070 --max-interactions 3000000`.)*
 
 The conclusion **holds and sharpens at scale**: with ~29× more users (so very tight
 statistics) the graph is roughly *half* as good as the flat baseline, not better. Two
@@ -120,11 +118,12 @@ extra edge parameters only add variance when fed weak features.
 
 ```bash
 bash scripts/setup-amazon.sh                   # opt-in: installs the [amazon] extra
-python experiments/run_amazon_realdata.py      # loads All_Beauty, runs the comparison
+# All_Beauty (--max-items pins the run to the full first metadata shard, 112,590 items):
+python experiments/run_amazon_realdata.py --max-items 112590
 # larger category (cap interaction parsing with --max-interactions for tractability):
 python experiments/run_amazon_realdata.py \
   --category Cell_Phones_and_Accessories --label cell_phones \
-  --max-items 6000 --max-interactions 3000000
+  --max-items 184070 --max-interactions 3000000
 python -m pytest tests/test_amazon_loader.py   # offline assembly tests (no network)
 ```
 
