@@ -25,7 +25,21 @@ from .harness import (
     load_real_corpus,
     measure,
 )
-from .cli import build_demo_registry, ingest_main, refit_main, run_ingest, seconds_until_next_run
+from .annotate import (
+    AdjudicationReport,
+    adjudicate,
+    cohen_kappa,
+    export_for_annotation,
+    stable_id,
+)
+from .cli import (
+    b2_main,
+    build_demo_registry,
+    ingest_main,
+    refit_main,
+    run_ingest,
+    seconds_until_next_run,
+)
 from .http_api import build_app
 from .mcp_server import QIL_TOOLS, QILToolHandler
 from .query import QualityService
@@ -78,7 +92,13 @@ __all__ = [
     "GATE_RECOVERABLE",
     "refit_main",
     "ingest_main",
+    "b2_main",
     "run_ingest",
     "build_demo_registry",
     "seconds_until_next_run",
+    "export_for_annotation",
+    "adjudicate",
+    "cohen_kappa",
+    "stable_id",
+    "AdjudicationReport",
 ]

@@ -34,6 +34,7 @@ from typing import Protocol
 from .corpus import Corpus, Sample, generate
 from .eval import GATE_PRECISION, ClassificationReport, evaluate
 from .extract import QILExtractor
+from .schema import USE_PROFILES
 
 # Kickoff decision bands for use-profile precision on REAL text.
 GATE_PASS = GATE_PRECISION          # >= 0.70  -> proceed to coverage (B4)
@@ -81,11 +82,13 @@ class TransformerClassifier:
     """Fine-tuned-transformer use-profile head (HuggingFace). SCAFFOLD.
 
     The production headroom path: fine-tune a small encoder (e.g. ``distilbert-
-    base-uncased``) for sequence classification over the five use profiles. The
-    HF stack is an OPTIONAL dependency and there is no real corpus here, so
-    ``fit`` raises a clear message until ``transformers``/``torch`` are installed
-    and a real corpus is supplied. The interface matches the baseline so the
-    harness swaps models with one constructor change.
+    base-uncased``) for sequence classification over the five use profiles. The HF
+    stack (``transformers``/``torch``) is an OPTIONAL dependency (the ``[b2]``
+    extra); when it is absent ``fit`` raises a clear, actionable message and the
+    harness falls back to ``TfidfBaselineClassifier``. When it is present, ``fit``
+    runs a real ``Trainer`` fine-tune and ``predict_use_profiles`` serves it — the
+    interface matches the baseline so the harness swaps models with one
+    constructor change.
 
     Suggested hyperparameters (documented for reproducibility; tune on the real
     annotated set, not the controlled corpus): model=distilbert-base-uncased,
@@ -100,6 +103,11 @@ class TransformerClassifier:
     max_len: int = 256
     weight_decay: float = 0.01
     seed: int = 17
+    output_dir: str | None = None  # weights land here (default: a temp dir); .gitignore'd
+    # Fitted state (populated by fit(); not constructor args).
+    _model: object = field(default=None, repr=False, compare=False)
+    _tokenizer: object = field(default=None, repr=False, compare=False)
+    _labels: list[str] = field(default_factory=list, repr=False, compare=False)
 
     def hyperparameters(self) -> dict:
         return {
@@ -110,25 +118,68 @@ class TransformerClassifier:
 
     def fit(self, samples: list[Sample]) -> "TransformerClassifier":  # pragma: no cover - needs HF
         try:
-            import torch  # noqa: F401
-            import transformers  # noqa: F401
+            import tempfile
+
+            import torch
+            from transformers import (
+                AutoModelForSequenceClassification,
+                AutoTokenizer,
+                Trainer,
+                TrainingArguments,
+                set_seed,
+            )
         except ImportError as exc:  # scaffold boundary
             raise NotImplementedError(
                 "TransformerClassifier needs the optional HF stack "
-                "(`pip install transformers torch`) AND a real annotated corpus. "
-                "This is the documented fine-tune path; until both are present, "
-                "use TfidfBaselineClassifier. See harness.py docstring."
+                "(`pip install 'preferencelayer[b2]'` or `pip install transformers torch`) "
+                "AND a real annotated corpus. This is the documented fine-tune path; "
+                "until both are present, use TfidfBaselineClassifier. See harness.py docstring."
             ) from exc
-        # ===================================================================
-        # PLUG FINE-TUNE HERE: tokenize samples -> Trainer over
-        # AutoModelForSequenceClassification(num_labels=len(USE_PROFILES)) with
-        # the hyperparameters above. Persist weights OUTSIDE the repo (model
-        # weights are .gitignore'd: *.pt / *.bin / *.safetensors).
-        # ===================================================================
-        raise NotImplementedError("fine-tune body not configured; see PLUG FINE-TUNE HERE")
 
-    def predict_use_profiles(self, samples: list[Sample]) -> list[str]:  # pragma: no cover
-        raise NotImplementedError("train via fit() once HF + a real corpus are available")
+        set_seed(self.seed)
+        self._labels = list(USE_PROFILES)
+        label2id = {lbl: i for i, lbl in enumerate(self._labels)}
+        id2label = {i: lbl for lbl, i in label2id.items()}
+
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        enc = tokenizer([s.text for s in samples], truncation=True,
+                        padding=True, max_length=self.max_len)
+        labels = [label2id[s.use_profile] for s in samples]
+
+        class _Dataset(torch.utils.data.Dataset):
+            def __len__(self) -> int:
+                return len(labels)
+
+            def __getitem__(self, i: int) -> dict:
+                item = {k: torch.tensor(v[i]) for k, v in enc.items()}
+                item["labels"] = torch.tensor(labels[i])
+                return item
+
+        model = AutoModelForSequenceClassification.from_pretrained(
+            self.model_name, num_labels=len(self._labels),
+            id2label=id2label, label2id=label2id,
+        )
+        args = TrainingArguments(
+            output_dir=self.output_dir or tempfile.mkdtemp(prefix="qil_b2_"),
+            num_train_epochs=self.epochs, learning_rate=self.lr,
+            per_device_train_batch_size=self.batch_size, weight_decay=self.weight_decay,
+            seed=self.seed, report_to=[], logging_strategy="no", save_strategy="no",
+        )
+        Trainer(model=model, args=args, train_dataset=_Dataset()).train()
+        self._model, self._tokenizer = model, tokenizer
+        return self
+
+    def predict_use_profiles(self, samples: list[Sample]) -> list[str]:  # pragma: no cover - needs HF
+        if self._model is None:
+            raise NotImplementedError("call fit() first (needs the HF stack + a real corpus)")
+        import torch
+
+        enc = self._tokenizer([s.text for s in samples], truncation=True,
+                              padding=True, max_length=self.max_len, return_tensors="pt")
+        self._model.eval()
+        with torch.no_grad():
+            logits = self._model(**enc).logits
+        return [self._labels[i] for i in logits.argmax(dim=-1).tolist()]
 
 
 # --------------------------------------------------------------------------- #
