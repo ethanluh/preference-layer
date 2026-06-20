@@ -25,6 +25,7 @@ from .harness import (
     load_real_corpus,
     measure,
 )
+from .cli import refit_main, seconds_until_next_run
 from .http_api import build_app
 from .mcp_server import QIL_TOOLS, QILToolHandler
 from .query import QualityService
@@ -75,4 +76,6 @@ __all__ = [
     "measure",
     "GATE_PASS",
     "GATE_RECOVERABLE",
+    "refit_main",
+    "seconds_until_next_run",
 ]

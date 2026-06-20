@@ -1,0 +1,49 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_zzz999",
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "abc123",
+          "title": "ThinkPad X1 Carbon Gen 12 thermal throttling under sustained compile",
+          "selftext": "After 20 minutes of a heavy build the X1C G12 throttles hard and the fans spin up. Anyone else seeing this on sustained compute workloads?",
+          "score": 142,
+          "permalink": "/r/laptops/comments/abc123/x1c_g12_thermal/",
+          "author": "synthetic_user_1",
+          "author_fullname": "t2_synthetic1"
+        }
+      },
+      {
+        "kind": "t1",
+        "data": {
+          "id": "def456",
+          "body": "My Dell XPS 15 9530 battery degraded noticeably after a year of travel and daily charging.",
+          "score": 31,
+          "permalink": "/r/laptops/comments/abc123/x1c_g12_thermal/def456/",
+          "author": "synthetic_user_2"
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "ghi789",
+          "title": "",
+          "selftext": "",
+          "score": 0,
+          "permalink": "/r/laptops/comments/ghi789/empty/",
+          "author": "synthetic_user_3"
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "title": "no id, should be skipped",
+          "selftext": "this child has no id",
+          "score": 9
+        }
+      }
+    ]
+  }
+}

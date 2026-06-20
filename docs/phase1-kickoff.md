@@ -126,12 +126,27 @@ WS-C (part.): ──────────────────────
 
 ## Work Stream B — QIL v0.1 (two categories) — highest risk
 
+> **In-sandbox prod-hardening landed (issue #31).** The parts of WS-B that don't
+> need external resources are done and tested: the connector network boundary is
+> a single injectable `fetch` callable with a real, tested Reddit parser
+> (`qil/ingest/connectors.py`); the production `PostgresSink` / `PostgresPosteriorSink`
+> are covered by a fake-DB-API test (no `# pragma: no cover`); and the nightly
+> refit now has a scheduled entry point, `qil-refit` (cron/systemd-timer-friendly,
+> with an optional dependency-free `--loop`; `qil/cli.py`). What remains is
+> **external-resource-gated**: live API keys/HTTP (B1 fetch), a real annotated
+> corpus + transformer fine-tune (B2), and a live Postgres + scraped data for
+> coverage (B4).
+
 ### B1. Real ingestion pipeline (Months 4–5)
 - **Do:** productionize ingestion from Reddit (official API, rate-limited), iFixit
   (polite crawl, respect robots.txt), Notebookcheck (structured scrape); run daily;
   land records in the `product_signal` PostgreSQL schema.
 - **Done when:** the pipeline runs unattended for a week and lands deduplicated,
   normalized signals for laptops + keyboards.
+- **Hardened:** pipeline plumbing, normalization/dedup, the `PostgresSink`, and the
+  connector seam are implemented and tested; the **only** unplugged piece is the
+  network call (inject a `fetch` callable wrapping PRAW/HTTP). Live fetch + a live
+  Postgres remain external-resource-gated.
 
 ### B2. Precision on **real** text (Months 4–5) — the gate-behind-the-gate
 - **Do:** annotate ~300 real samples (2 annotators, adjudicate); fine-tune a small
@@ -148,6 +163,10 @@ WS-C (part.): ──────────────────────
   specified in `architecture.md`; refit posteriors nightly; store parameters only.
 - **Done when:** nightly refit job is scheduled; `/quality` returns GP-backed
   posteriors with the same contract (mean + 90% CI + failure rate + evidence count).
+- **Done:** the GP-over-release-time model and `run_nightly_refit` (parameters
+  only) were already implemented and tested; scheduling now ships as the
+  `qil-refit` entry point (cron / systemd timer, or `--loop`). The
+  `PostgresPosteriorSink` upsert is covered by the fake-DB-API test.
 
 ### B4. Coverage + API (Month 6)
 - **Do:** serve `/quality` and `/compare` over HTTP (< 200 ms p95); reach the
