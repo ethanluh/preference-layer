@@ -1,0 +1,9 @@
+# Sample robots.txt fixture for politeness tests.
+User-agent: *
+Disallow: /private
+Allow: /private/public
+Crawl-delay: 2
+
+User-agent: PreferenceLayerBot
+Disallow: /admin
+Crawl-delay: 5
