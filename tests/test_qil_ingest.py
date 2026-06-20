@@ -167,6 +167,50 @@ def test_run_daily_is_idempotent_on_rerun():
     assert len(sink.rows) == 2
 
 
+# --- quality_dim span tagger (closes the zero-GP-posteriors gap) -----------
+
+def test_no_tagger_leaves_quality_dim_none():
+    # Default path (no tagger): quality_dim stays None, so the aggregator forms
+    # zero GP quality posteriors -- the gap the tagger exists to close.
+    conn = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    sink = InMemorySink()
+    run_daily([conn], _registry(), _extractor(), sink)
+    assert all(r.quality_dim is None for r in sink.rows)
+
+
+def test_quality_tagger_populates_quality_dim():
+    from preferencelayer.qil.quality_spans import QualityDimTagger
+
+    conn = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    sink = InMemorySink()
+    run_daily([conn], _registry(), _extractor(), sink, quality_tagger=QualityDimTagger())
+    assert any(r.quality_dim is not None for r in sink.rows)
+
+
+def test_tagged_signals_form_gp_posteriors():
+    # End-to-end claim: a tagged quality_dim flows into a GP quality posterior.
+    # signal_type is fixed to a non-failure value to isolate the GP path from the
+    # learned signal-type head (which is tested separately).
+    from preferencelayer.qil.aggregate import QualityAggregator
+    from preferencelayer.qil.extract import ExtractedSignal
+    from preferencelayer.qil.quality_spans import QualityDimTagger
+
+    conn = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    sink = InMemorySink()
+    run_daily([conn], _registry(), _extractor(), sink, quality_tagger=QualityDimTagger())
+
+    signals = [
+        ExtractedSignal(
+            product_id=r.product_id, category=r.category, use_profile=r.use_profile,
+            signal_type="performance", failure_mode=None, quality_dim=r.quality_dim,
+            signal_value=r.signal_value, confidence=r.model_confidence,
+        )
+        for r in sink.rows if r.quality_dim is not None
+    ]
+    agg = QualityAggregator().fit(signals)
+    assert len(agg.quality) > 0  # was 0 before the tagger populated quality_dim
+
+
 def test_schema_sql_defines_both_tables_with_no_user_id():
     import re
 

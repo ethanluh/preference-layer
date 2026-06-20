@@ -58,10 +58,12 @@ def test_run_ingest_refit_runs_end_to_end():
     stats, written = run_ingest([_reddit_connector()], build_demo_registry(), _extractor(),
                                 sink, refit=True)
     assert stats.written > 0
-    # Quality-dim posteriors are only produced once a span model populates
-    # quality_dim (Work Stream B2); with the placeholder extractor this is >= 0,
-    # and the chaining itself runs without error.
+    # run_ingest now tags quality_dim by default (heuristic span tagger), so the
+    # refit produces real GP quality posteriors instead of zero -- but only for
+    # non-failure signals, so assert the chain runs and writes a non-negative count.
     assert written >= 0
+    # At least one row carries a tagged quality_dim (the gap the tagger closes).
+    assert any(r.quality_dim is not None for r in sink.rows)
 
 
 def test_ingest_main_over_clean_dir(tmp_path, capsys):

@@ -30,6 +30,7 @@ from pathlib import Path
 
 from .corpus import generate
 from .extract import ExtractedSignal, QILExtractor
+from .quality_spans import QualityDimTagger
 from .ingest import (
     CanonicalProduct,
     FixtureConnector,
@@ -124,13 +125,16 @@ def run_ingest(
     *,
     refit: bool = False,
     posterior_sink: PosteriorSink | None = None,
+    quality_tagger: QualityDimTagger | None = None,
 ) -> tuple[IngestionStats, int]:
     """Run one ingest pass; optionally chain straight into a posterior refit.
 
     Returns ``(stats, posteriors_written)`` -- ``posteriors_written`` is 0 unless
-    ``refit`` is set.
+    ``refit`` is set. A ``QualityDimTagger`` is used by default (so the refit
+    produces real GP quality posteriors); pass one explicitly to override.
     """
-    stats = run_daily(connectors, registry, extractor, sink)
+    stats = run_daily(connectors, registry, extractor, sink,
+                      quality_tagger=quality_tagger or QualityDimTagger())
     written = 0
     if refit:
         signals = [_row_to_signal(r) for r in sink.rows]
@@ -209,7 +213,8 @@ def ingest_main(argv: list[str] | None = None) -> int:
           f"unmatched={stats.unmatched} written={stats.written}")
     for row in sink.rows:
         print(f"  {row.product_id:35s} use_profile={row.use_profile:12s} "
-              f"signal_type={row.signal_type:11s} conf={row.model_confidence:.2f}")
+              f"signal_type={row.signal_type:11s} quality_dim={str(row.quality_dim):17s} "
+              f"conf={row.model_confidence:.2f}")
     if args.refit:
         print(f"refit: wrote {written} posteriors (parameters only)")
     print("NOTE: no raw scraped text persisted -- only normalized product_signal rows.")
