@@ -15,6 +15,24 @@ from .persistence import (
     default_home,
 )
 from .update import DPConfig, BudgetExhausted, apply_outcome, gaussian_sigma
+from .device_flow import (
+    AccessDenied,
+    AuthorizationPending,
+    DeviceCodeResponse,
+    DeviceFlowAuthority,
+    DeviceFlowError,
+    ExpiredToken,
+    InvalidDeviceCode,
+    SlowDown,
+)
+from .cloud_sync import (
+    CloudSyncClient,
+    SyncEnvelope,
+    SyncServerStub,
+    open_payload,
+    seal_payload,
+    store_id_for,
+)
 
 __all__ = [
     "PreferenceCredential",
@@ -35,4 +53,18 @@ __all__ = [
     "BudgetExhausted",
     "apply_outcome",
     "gaussian_sigma",
+    "DeviceFlowAuthority",
+    "DeviceCodeResponse",
+    "DeviceFlowError",
+    "AuthorizationPending",
+    "SlowDown",
+    "AccessDenied",
+    "ExpiredToken",
+    "InvalidDeviceCode",
+    "CloudSyncClient",
+    "SyncServerStub",
+    "SyncEnvelope",
+    "seal_payload",
+    "open_payload",
+    "store_id_for",
 ]
