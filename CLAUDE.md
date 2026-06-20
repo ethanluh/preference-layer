@@ -46,5 +46,6 @@ If you write Phase 0 experiment code, document dataset version, hyperparameters,
 
 - Per `.gitignore`, never commit raw datasets or model weights (`data/raw/`, `data/processed/`, `*.csv`, `*.parquet`, `*.pkl`, `*.pt`, etc.) or credentials (`*.pem`, `*.key`, `*.cred`, `.env`).
 - Protocol/schema/API changes require a prior GitHub issue thread before a PR (per `CONTRIBUTING.MD`). Label issues: `research`, `protocol`, `infra`, `data`.
+- **Branch naming:** name branches `<type>/<short-description>`, where `<type>` is one of `docs`, `feature`, `bug`, `fix`, etc., followed by a slash and a brief kebab-case description (e.g. `feature/new-sign-in`, `docs/update-protocol-spec`, `fix/credential-resign-bug`).
 </content>
 </invoke>
