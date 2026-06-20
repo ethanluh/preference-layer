@@ -68,9 +68,17 @@ class RobotsPolicy:
 
     def _parse(self, body: str) -> None:
         # Collect rule groups; apply the group matching our UA, else '*'.
+        #
+        # Per RFC 9309 a group of records starts with one or more *consecutive*
+        # ``User-agent`` lines, and the rules that follow apply to all of them.
+        # We therefore accumulate consecutive ``User-agent`` lines into
+        # ``current_agents``; the first non-``User-agent`` directive
+        # (Allow/Disallow/Crawl-delay) closes the agent list so the next
+        # ``User-agent`` line begins a fresh group.
         groups: dict[str, list[tuple[str, bool]]] = {}
         delays: dict[str, float] = {}
         current_agents: list[str] = []
+        accumulating_agents = False
         for raw_line in body.splitlines():
             line = raw_line.split("#", 1)[0].strip()
             if not line or ":" not in line:
@@ -79,9 +87,14 @@ class RobotsPolicy:
             field = field.strip().lower()
             value = value.strip()
             if field == "user-agent":
-                current_agents = [value.lower()]
+                if not accumulating_agents:
+                    # A new group begins after the previous group's rules.
+                    current_agents = []
+                    accumulating_agents = True
+                current_agents.append(value.lower())
                 groups.setdefault(value.lower(), [])
             elif field in ("disallow", "allow") and current_agents:
+                accumulating_agents = False
                 allowed = field == "allow"
                 for agent in current_agents:
                     # An empty Disallow means "allow all" -> no rule.
@@ -89,6 +102,7 @@ class RobotsPolicy:
                         continue
                     groups.setdefault(agent, []).append((value, allowed))
             elif field == "crawl-delay" and current_agents:
+                accumulating_agents = False
                 try:
                     for agent in current_agents:
                         delays[agent] = float(value)

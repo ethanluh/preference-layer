@@ -70,6 +70,27 @@ def test_robots_selects_named_user_agent_group():
     assert pol.crawl_delay == 5.0
 
 
+def test_robots_shared_ruleset_applies_to_grouped_user_agents():
+    # Per RFC 9309, consecutive User-agent lines share the following ruleset.
+    body = (
+        "User-agent: botA\n"
+        "User-agent: botB\n"
+        "Disallow: /private\n"
+        "Crawl-delay: 3\n"
+        "\n"
+        "User-agent: *\n"
+        "Disallow: /\n"
+    )
+    for ua in ("botA", "botB"):
+        pol = RobotsPolicy(body, user_agent=ua)
+        assert pol.can_fetch("https://x.com/public/page") is True
+        assert pol.can_fetch("https://x.com/private/secret") is False
+        assert pol.crawl_delay == 3.0
+    # A following group must not leak into the grouped agents.
+    other = RobotsPolicy(body, user_agent="otherbot")
+    assert other.can_fetch("https://x.com/public/page") is False
+
+
 def test_rate_limiter_blocks_when_bucket_empty():
     slept: list[float] = []
     t = {"now": 0.0}
