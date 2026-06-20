@@ -9,13 +9,24 @@ Subcommands:
 * ``agent-demo``     — rank candidates with the preference+quality α-blend, showing
                        how a cold-start and a rich-history user diverge.
 * ``integration``    — run the Phase 1 preference+quality integration benchmark.
-* ``view``           — summarize a saved credential store.
+
+Persistent credential store (Phase 1, Work Stream A — operate on a real on-disk,
+encrypted store under ``$PREFLAYER_HOME`` or ``~/.preflayer``):
+
+* ``init``           — create the user's identity + store (``--seed-demo`` adds a
+                       starter laptops credential).
+* ``authorize``      — mint a scoped, expiring agent token.
+* ``view``           — summarize the identity, credentials and active agent tokens.
+* ``revoke``         — revoke all tokens for an agent id.
+* ``export``         — export the signed credentials as JSON.
+* ``delete``         — irreversibly wipe the store.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
 
 import numpy as np
 
@@ -265,16 +276,163 @@ def _integration(args) -> int:
     return 0 if rep.milestone_pass else 1
 
 
-def _view(args) -> int:
-    from .ptp import CredentialStore, new_user_keypair
+def _starter_credential(did: str):
+    """A small, realistic laptops credential so `view`/`export` show content."""
+    from .ptp import AttributeNode, Edge, PreferenceCredential, PreferenceGraph
 
-    print("`view` requires a saved store and key; this prototype generates ephemeral keys per run.")
-    print("Run `preflayer demo` for a full in-memory lifecycle.")
+    graph = PreferenceGraph(
+        category="laptops",
+        attributeNodes=[
+            AttributeNode("performance", weight=0.8, confidence=0.7),
+            AttributeNode("portability", weight=0.6, confidence=0.5),
+            AttributeNode("price_sensitivity", weight=-0.3, confidence=0.6),
+            AttributeNode("build_quality", weight=0.5, confidence=0.3),
+        ],
+        edges=[Edge("performance", "portability", weight=-0.4, contextKey="travel")],
+        coldStartPrior="laptops_population_v0",
+    )
+    return PreferenceCredential(did, graph)
+
+
+def _open_store(create: bool = False):
+    from .ptp import IdentityLocked, PersistentCredentialStore, StoreNotFound
+
+    try:
+        return PersistentCredentialStore.open(args_home(), create=create)
+    except StoreNotFound as e:
+        print(f"error: {e}", file=sys.stderr)
+    except IdentityLocked as e:
+        print(f"error: {e}", file=sys.stderr)
+    return None
+
+
+# `args_home` is set by `main` from the resolved --home/$PREFLAYER_HOME.
+_HOME = None
+
+
+def args_home():
+    return _HOME
+
+
+def _init(args) -> int:
+    from .ptp import PersistentCredentialStore, StoreNotFound
+
+    # Refuse to clobber an existing store unless --force.
+    try:
+        existing = PersistentCredentialStore.open(args_home(), create=False)
+        existing.close()
+        if not args.force:
+            print(f"error: a store already exists at {args_home() or '~/.preflayer'} "
+                  f"(use --force to reinitialize)", file=sys.stderr)
+            return 1
+        existing = PersistentCredentialStore.open(args_home(), create=False)
+        existing.delete_all()
+    except StoreNotFound:
+        pass
+
+    store = PersistentCredentialStore.open(args_home(), create=True)
+    print(f"Initialized PreferenceLayer store at {store.home}")
+    print(f"Identity (did:key): {store.issuer_did}")
+    if args.seed_demo:
+        store.put_credential(_starter_credential(store.issuer_did))
+        print("Seeded a starter 'laptops' credential.")
+    store.close()
+    return 0
+
+
+def _authorize(args) -> int:
+    store = _open_store()
+    if store is None:
+        return 1
+    scope = args.scope or ["*"]
+    token = store.authorize_agent(args.agent_id, scope=scope, ttl_seconds=args.ttl)
+    store.close()
+    print(f"Authorized '{args.agent_id}' scope={scope} ttl={args.ttl}s")
+    print(f"token: {token}")
+    return 0
+
+
+def _revoke(args) -> int:
+    store = _open_store()
+    if store is None:
+        return 1
+    n = store.revoke_agent(args.agent_id)
+    store.close()
+    print(f"Revoked {n} active token(s) for '{args.agent_id}'.")
+    return 0
+
+
+def _export(args) -> int:
+    import json as _json
+
+    store = _open_store()
+    if store is None:
+        return 1
+    bundle = store.export_bundle()
+    store.close()
+    text = _json.dumps(bundle, indent=2)
+    if args.out:
+        from pathlib import Path
+
+        Path(args.out).write_text(text)
+        print(f"Exported {len(bundle['credentials'])} credential(s) to {args.out}")
+    else:
+        print(text)
+    return 0
+
+
+def _delete(args) -> int:
+    store = _open_store()
+    if store is None:
+        return 1
+    if not args.yes:
+        print(f"This will irreversibly delete the store and identity at {store.home}.")
+        resp = input("Type 'delete' to confirm: ").strip()
+        if resp != "delete":
+            store.close()
+            print("Aborted.")
+            return 1
+    store.delete_all()
+    print("Store deleted.")
+    return 0
+
+
+def _view(args) -> int:
+    store = _open_store()
+    if store is None:
+        return 1
+    store.prune_expired()
+    print(f"Store:    {store.home}")
+    print(f"Identity: {store.issuer_did}")
+    cats = store.categories()
+    print(f"\nCredentials ({len(cats)}):")
+    if not cats:
+        print("  (none — run `preflayer init --seed-demo` or have an agent elicit one)")
+    for c in sorted(cats):
+        cred = store._creds[c]
+        g = cred.graph
+        confs = [n.confidence for n in g.attributeNodes]
+        mean_conf = sum(confs) / len(confs) if confs else 0.0
+        valid = cred.verify(store.signing_key.verify_key)
+        print(f"  [{c}] nodes={len(g.attributeNodes)} edges={len(g.edges)} "
+              f"mean_conf={mean_conf:.2f} updates={g.updateCount} "
+              f"budget={g.privacyBudgetConsumed} signed={'ok' if valid else 'INVALID'}")
+    tokens = store.agent_tokens()
+    print(f"\nActive agent tokens ({len(tokens)}):")
+    if not tokens:
+        print("  (none)")
+    for at in tokens:
+        ttl = max(0, int(at.expires_at - time.time()))
+        print(f"  {at.agent_id:<28} scope={at.scope} expires_in={ttl}s")
+    store.close()
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _HOME
     parser = argparse.ArgumentParser(prog="preflayer", description="PreferenceLayer prototype CLI")
+    parser.add_argument("--home", default=None,
+                        help="Credential store directory (default: $PREFLAYER_HOME or ~/.preflayer).")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("demo", help="Run an end-to-end PTP lifecycle demo.")
@@ -291,9 +449,24 @@ def main(argv: list[str] | None = None) -> int:
     integ = sub.add_parser("integration", help="Run the Phase 1 integration benchmark.")
     integ.add_argument("--users", type=int, default=300)
     integ.add_argument("--seed", type=int, default=23)
-    sub.add_parser("view", help="Summarize a saved credential store.")
+
+    ini = sub.add_parser("init", help="Create the user's identity + persistent credential store.")
+    ini.add_argument("--force", action="store_true", help="Reinitialize, deleting any existing store.")
+    ini.add_argument("--seed-demo", action="store_true", help="Seed a starter 'laptops' credential.")
+    auth = sub.add_parser("authorize", help="Mint a scoped, expiring agent token.")
+    auth.add_argument("agent_id")
+    auth.add_argument("--scope", nargs="*", default=None, help="Category scope(s); default '*' (all).")
+    auth.add_argument("--ttl", type=int, default=86_400, help="Token lifetime in seconds (default 1 day).")
+    rev = sub.add_parser("revoke", help="Revoke all active tokens for an agent id.")
+    rev.add_argument("agent_id")
+    sub.add_parser("view", help="Summarize the persistent credential store.")
+    exp_cmd = sub.add_parser("export", help="Export signed credentials as JSON.")
+    exp_cmd.add_argument("--out", default=None, help="Write to a file instead of stdout.")
+    dele = sub.add_parser("delete", help="Irreversibly delete the store and identity.")
+    dele.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
 
     args = parser.parse_args(argv)
+    _HOME = args.home
     if args.command == "demo":
         return _demo()
     if args.command == "experiment":
@@ -306,8 +479,18 @@ def main(argv: list[str] | None = None) -> int:
         return _protocol_demo(args)
     if args.command == "integration":
         return _integration(args)
+    if args.command == "init":
+        return _init(args)
+    if args.command == "authorize":
+        return _authorize(args)
+    if args.command == "revoke":
+        return _revoke(args)
     if args.command == "view":
         return _view(args)
+    if args.command == "export":
+        return _export(args)
+    if args.command == "delete":
+        return _delete(args)
     return 1
 
 

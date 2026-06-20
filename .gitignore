@@ -38,6 +38,8 @@ data/processed/
 *.pem
 *.key
 *.cred
+store.db          # local persistent credential store database
+.preflayer/       # default PreferenceLayer store home
 .env
 .env.*
 credentials.json
