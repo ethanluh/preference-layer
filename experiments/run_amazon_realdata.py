@@ -108,7 +108,7 @@ def main() -> int:
             "ndcg": {name: r.ndcg for name, r in results.items()},
             "graph_vs_flat_attribute": {"rel_gain_pct": comp.rel_gain_pct, "p_value": comp.p_value},
         }
-        Path(args.json).write_text(json.dumps(payload, indent=2))
+        Path(args.json).write_text(json.dumps(payload, indent=2) + "\n")
         print(f"\nWrote results to {args.json}")
 
     return 0
