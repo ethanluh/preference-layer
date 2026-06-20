@@ -16,12 +16,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "jsonschema>=4.0", "fastapi>=0.110", "httpx>=0.27"]  # httpx powers fastapi.testclient
+dev = ["pytest>=7.0", "jsonschema>=4.0", "fastapi>=0.110", "httpx>=0.27", "langchain-core>=0.3"]  # httpx powers fastapi.testclient; langchain-core exercises the LangChain tool self-selection test
 amazon = ["pandas>=1.5", "pyarrow>=12", "huggingface_hub>=0.20"]  # ingest the real Amazon Reviews 2023 corpus (Parquet + benchmark CSV)
 mcp = ["mcp>=1.0"]           # only needed to run the live MCP server
 api = ["fastapi>=0.110", "uvicorn>=0.27"]   # serve the QIL /quality + /compare HTTP API
 schema = ["jsonschema>=4.0"] # full Draft 2020-12 validation of PTP credentials (validator has a built-in fallback otherwise)
 http = ["fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27"]  # serve the three PTP endpoints over HTTP
+langchain = ["langchain-core>=0.3"]  # expose the PTP tools as LangChain StructuredTools
 
 [project.scripts]
 preflayer = "preferencelayer.cli:main"
