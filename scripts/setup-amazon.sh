@@ -13,9 +13,10 @@ fi
 source .venv/bin/activate
 
 python -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
-# Install the amazon extra only if its deps aren't importable yet.
+# Install the amazon extra (plus dev, so the documented pytest verification works on a
+# cold venv) only if its deps aren't importable yet.
 if ! python -c "import pandas, pyarrow, huggingface_hub" >/dev/null 2>&1; then
-  pip install --quiet -e ".[amazon]"
+  pip install --quiet -e ".[dev,amazon]"
 fi
 
 echo "PreferenceLayer real-data deps ready (.venv + [amazon])."
