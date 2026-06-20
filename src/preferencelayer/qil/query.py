@@ -17,6 +17,12 @@ from .aggregate import QualityAggregator
 from .schema import QUALITY_DIMS
 
 
+# A query MUST be conditioned on a non-empty use profile -- quality signals are
+# never reported as population-level aggregates (the core QIL invariant). Reject
+# an empty/whitespace use_profile rather than silently keying a degenerate lookup.
+_EMPTY_USE_PROFILE = "use_profile must be a non-empty string (quality is use-profile-conditioned)"
+
+
 def _normal_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
@@ -26,6 +32,8 @@ class QualityService:
         self.agg = aggregator
 
     def quality(self, product_id: str, use_profile: str, dimensions: list[str] | None = None) -> dict:
+        if not (use_profile and use_profile.strip()):
+            return {"status": 400, "detail": _EMPTY_USE_PROFILE}
         dims = dimensions or list(QUALITY_DIMS)
         out_dims = {}
         for dim in dims:
@@ -65,6 +73,8 @@ class QualityService:
         aggregator instances and reconcile the results themselves; this method
         does not mix query times.
         """
+        if not (use_profile and use_profile.strip()):
+            return {"status": 400, "detail": _EMPTY_USE_PROFILE}
         dims = {}
         for dim in QUALITY_DIMS:
             pa = self.agg.quality.get((product_id_a, use_profile, dim))

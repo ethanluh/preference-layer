@@ -7,6 +7,7 @@ from preferencelayer.ptp import (
     AttributeNode,
     AuthError,
     CredentialStore,
+    DPConfig,
     PreferenceCredential,
     PreferenceGraph,
     context_to_nodes,
@@ -14,7 +15,7 @@ from preferencelayer.ptp import (
 )
 
 
-def _store():
+def _store(dp: DPConfig | None = None):
     sk, did = new_user_keypair(seed=b"2" * 32)
     g = PreferenceGraph(
         category="laptops",
@@ -24,7 +25,7 @@ def _store():
             AttributeNode("price_sensitivity", -0.2, 0.3),
         ],
     )
-    store = CredentialStore(sk, did)
+    store = CredentialStore(sk, did, dp=dp)
     store.put_credential(PreferenceCredential(did, g))
     return sk, did, store
 
@@ -64,6 +65,40 @@ def test_submit_outcome_updates_and_resigns():
     # Credential remains valid after the in-place update + re-sign.
     after = store.get_preference(token, "laptops")
     assert PreferenceCredential.from_dict(after["credential"]).verify(sk.verify_key)
+
+
+def test_submit_outcome_budget_exhaustion_returns_429():
+    sk, _, store = _store(dp=DPConfig(epsilon=2.0, budget_max=3.0))
+    token = store.authorize_agent("agent.a", scope=["laptops"])
+    first = store.submit_outcome(token, "laptops", "thinkpad", "purchase",
+                                 use_context="sustained compute")
+    assert first["status"] == 202
+    # Second update would exceed budget_max (2 + 2 > 3): refused, not a 500.
+    second = store.submit_outcome(token, "laptops", "thinkpad", "purchase",
+                                  use_context="sustained compute")
+    assert second["status"] == 429
+    assert second["consent_required"] is True
+    # Refusal left the credential valid and unchanged (still signed).
+    assert PreferenceCredential.from_dict(
+        store.get_preference(token, "laptops")["credential"]).verify(sk.verify_key)
+
+
+def test_reset_budget_requires_consent():
+    sk, _, store = _store(dp=DPConfig(epsilon=2.0, budget_max=3.0))
+    token = store.authorize_agent("agent.a", scope=["laptops"])
+    store.submit_outcome(token, "laptops", "thinkpad", "purchase", use_context="sustained compute")
+
+    # Without consent: refused with 403, budget untouched.
+    refused = store.reset_budget(token, "laptops")
+    assert refused["status"] == 403 and refused["consent_required"] is True
+
+    # With explicit consent: budget reset, credential re-signed, updates flow again.
+    ok = store.reset_budget(token, "laptops", consent=True)
+    assert ok["status"] == 200 and ok["privacy_budget_consumed"] == 0.0
+    assert PreferenceCredential.from_dict(
+        store.get_preference(token, "laptops")["credential"]).verify(sk.verify_key)
+    assert store.submit_outcome(token, "laptops", "thinkpad", "purchase",
+                                use_context="sustained compute")["status"] == 202
 
 
 def test_elicit_orders_by_information_gain():

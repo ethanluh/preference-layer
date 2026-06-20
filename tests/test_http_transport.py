@@ -25,6 +25,7 @@ from preferencelayer.ptp.credential import (  # noqa: E402
     new_user_keypair,
 )
 from preferencelayer.ptp.store import CredentialStore  # noqa: E402
+from preferencelayer.ptp.update import DPConfig  # noqa: E402
 
 
 def _store():
@@ -96,6 +97,24 @@ def test_post_outcome_updates_and_resigns_over_http():
     assert after == before + 1
     g = client.request("GET", "/preference", json={"category": "laptops"}, headers=_auth(token))
     assert PreferenceCredential.from_dict(g.json()["credential"]).verify(sk.verify_key)
+
+
+def test_post_outcome_budget_exhaustion_maps_to_http_429():
+    sk, did = new_user_keypair(seed=b"5" * 32)
+    store = CredentialStore(sk, did, dp=DPConfig(epsilon=2.0, budget_max=3.0))
+    store.put_credential(PreferenceCredential(did, PreferenceGraph(
+        category="laptops", attributeNodes=[AttributeNode("performance", 0.8, 0.7)],
+    )))
+    token = store.authorize_agent("agent.a", scope=["laptops"])
+    client = _client(store)
+    body = {"category": "laptops", "product_id": "thinkpad", "outcome_type": "purchase",
+            "use_context": "sustained compute", "timestamp": "2026-06-20T00:00:00Z"}
+
+    assert client.post("/outcome", headers=_auth(token), json=body).status_code == 202
+    # Next update would exceed the budget -> 429, not an unhandled 500.
+    r = client.post("/outcome", headers=_auth(token), json=body)
+    assert r.status_code == 429
+    assert r.json()["detail"]["consent_required"] is True
 
 
 def test_post_elicit_orders_by_information_gain():

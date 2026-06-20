@@ -27,7 +27,7 @@ from nacl import signing
 from nacl.hash import blake2b
 
 from .credential import PreferenceCredential
-from .update import DPConfig, apply_outcome
+from .update import BudgetExhausted, DPConfig, apply_outcome
 
 # Coarse use-context -> attribute keyword mapping. A production system would learn
 # this; for the prototype a keyword table is enough to route outcome signals.
@@ -160,20 +160,59 @@ class CredentialStore:
 
         available = [n.id for n in cred.graph.attributeNodes]
         affected = context_to_nodes(use_context, available)
-        apply_outcome(
-            cred,
-            affected_nodes=affected,
-            outcome_type=outcome_type,
-            rating=rating,
-            elicitation_weights=elicitation_weights,
-            cfg=self.dp,
-        )
+        try:
+            apply_outcome(
+                cred,
+                affected_nodes=affected,
+                outcome_type=outcome_type,
+                rating=rating,
+                elicitation_weights=elicitation_weights,
+                cfg=self.dp,
+            )
+        except BudgetExhausted as exc:
+            # The DP budget is exhausted; the update is refused (no weight change,
+            # no re-sign). Surface a 429 the agent can act on, and signal that
+            # continuing requires explicit user consent (see reset_budget).
+            return {
+                "status": 429,
+                "detail": str(exc),
+                "consent_required": True,
+                "privacy_budget_consumed": cred.graph.privacyBudgetConsumed,
+            }
         cred.sign(self.signing_key)  # re-sign after update
         return {
             "status": 202,
             "signal_id": "sig_" + secrets.token_hex(8),
             "update_queued": True,
             "affected_nodes": affected,
+            "privacy_budget_consumed": cred.graph.privacyBudgetConsumed,
+        }
+
+    def reset_budget(self, token: str, category: str, *, consent: bool = False) -> dict:
+        """Reset the DP privacy budget for a category — STUB, requires user consent.
+
+        Resetting ``privacyBudgetConsumed`` lets a credential accept further DP
+        updates after exhaustion, but it spends a fresh privacy budget, so it must
+        be a deliberate, *user*-authorized act. This is a stub: it enforces the
+        consent gate and the re-sign, but the consent UX (how the user is asked,
+        and any audit trail) is out of scope here (Phase 2). Without
+        ``consent=True`` it refuses with a 403.
+        """
+        self._auth(token, category)
+        cred = self._creds.get(category)
+        if cred is None:
+            return {"status": 404, "detail": "no credential for category"}
+        if not consent:
+            return {
+                "status": 403,
+                "detail": "budget reset requires explicit user consent",
+                "consent_required": True,
+            }
+        cred.graph.privacyBudgetConsumed = 0.0
+        cred.sign(self.signing_key)  # re-sign after the reset
+        return {
+            "status": 200,
+            "budget_reset": True,
             "privacy_budget_consumed": cred.graph.privacyBudgetConsumed,
         }
 
