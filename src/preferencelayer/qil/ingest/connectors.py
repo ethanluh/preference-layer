@@ -98,7 +98,23 @@ class Connector(ABC):
 
 
 class _LiveConnector(Connector):
-    """Shared base for the three live (network) connectors -- SCAFFOLD."""
+    """Shared base for the three live (network) connectors.
+
+    The ONLY unplugged piece is the network call. Everything else -- politeness,
+    parsing, normalization, dedup, sink -- is implemented and tested. The network
+    boundary is a single injectable ``fetch`` callable (``url -> payload``):
+
+    * In production, pass ``fetch=`` the source's authenticated client / HTTP GET
+      (e.g. PRAW for Reddit, ``requests.get`` honoring ``self.robots.crawl_delay``
+      for iFixit / Notebookcheck).
+    * In tests, pass a fake ``fetch`` returning canned payloads to exercise the
+      real ``_parse`` without a network.
+    * If no ``fetch`` is injected, ``_fetch_pages`` raises a clear error.
+    """
+
+    def __init__(self, category: str, *, fetch=None, **kw):
+        super().__init__(category, **kw)
+        self._fetch = fetch
 
     def documents(self) -> Iterator[RawDocument]:
         for url in self._page_urls():
@@ -110,18 +126,19 @@ class _LiveConnector(Connector):
         raise NotImplementedError
 
     def _fetch_pages(self, url: str) -> object:
+        if self._fetch is not None:
+            return self._fetch(url)
         # ===================================================================
         # PLUG API KEYS / HTTP HERE.
-        # Wire the source's authenticated client / HTTP GET in this one method.
-        # Everything else (politeness, parsing, normalization, dedup, sink) is
-        # implemented and tested via FixtureConnector. Suggested:
+        # Inject a ``fetch`` callable (constructor arg) wrapping the source's
+        # authenticated client / HTTP GET. Suggested:
         #   Reddit:        PRAW / OAuth app creds from env (REDDIT_CLIENT_ID...)
         #   iFixit:        requests.get(url) honoring self.robots.crawl_delay
         #   Notebookcheck: requests.get(url) honoring self.robots.crawl_delay
         # ===================================================================
         raise NotImplementedError(
             f"{type(self).__name__}: network fetch not configured. "
-            "Plug API keys / HTTP into _fetch_pages (see PLUG API KEYS HERE), "
+            "Inject a fetch callable (see PLUG API KEYS HERE), "
             "or use FixtureConnector for offline runs."
         )
 
@@ -130,7 +147,12 @@ class _LiveConnector(Connector):
 
 
 class RedditConnector(_LiveConnector):
-    """Reddit (official API, rate-limited). SCAFFOLD -- see _fetch_pages."""
+    """Reddit (official API, rate-limited).
+
+    The network call is the injected ``fetch`` (e.g. a PRAW/OAuth listing GET);
+    ``_parse`` handles the standard Reddit listing JSON shape
+    (``{"data": {"children": [{"data": {...}}]}}``) and is fully tested.
+    """
 
     source_type = "reddit"
 
@@ -140,6 +162,39 @@ class RedditConnector(_LiveConnector):
 
     def _page_urls(self) -> list[str]:
         return [f"https://oauth.reddit.com/r/{s}/new" for s in self.subreddits]
+
+    def _parse(self, payload: object, url: str) -> Iterator[RawDocument]:
+        """Yield non-identifying RawDocuments from a Reddit listing payload.
+
+        Reads only the body text, the post id, score, and permalink -- the
+        author/username and other identifier fields are deliberately NOT read, so
+        no user identifier reaches a RawDocument (architecture.md "QIL privacy").
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("RedditConnector expects a listing dict payload")
+        children = payload.get("data", {}).get("children", [])
+        for child in children:
+            data = child.get("data", {}) if isinstance(child, dict) else {}
+            local_id = data.get("id")
+            if not local_id:
+                continue
+            # Posts carry title + selftext; comments carry body. Use whatever text
+            # is present, joined and stripped.
+            text = "\n".join(
+                part for part in (data.get("title"), data.get("selftext"), data.get("body"))
+                if part
+            ).strip()
+            if not text:
+                continue
+            permalink = data.get("permalink")
+            yield RawDocument(
+                source_type=self.source_type,
+                source_local_id=str(local_id),
+                category=self.category,
+                text=text,
+                source_url=(f"https://www.reddit.com{permalink}" if permalink else url),
+                upvote_count=int(data.get("score", 0) or 0),
+            )
 
 
 class IFixitConnector(_LiveConnector):

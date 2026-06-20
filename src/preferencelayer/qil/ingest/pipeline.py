@@ -77,12 +77,14 @@ class InMemorySink(SignalSink):
         return written
 
 
-class PostgresSink(SignalSink):  # pragma: no cover - requires a live DB
+class PostgresSink(SignalSink):
     """Production sink: INSERT ... ON CONFLICT DO NOTHING into product_signal.
 
-    SCAFFOLD: pass any DB-API 2.0 connection (e.g. psycopg). The dedup is handled
-    by the uq_product_signal_dedup constraint in schema.sql, so re-running the
-    daily job is idempotent.
+    Pass any DB-API 2.0 connection (e.g. psycopg). The dedup is handled by the
+    uq_product_signal_dedup constraint in schema.sql, so re-running the daily job
+    is idempotent. The SQL/param wiring is covered by a fake-DB-API test
+    (tests/test_qil_postgres_sinks.py); only a live Postgres exercises the real
+    constraint.
     """
 
     _INSERT = """
