@@ -9,9 +9,11 @@ import pytest
 from preferencelayer.ptp import (
     AccessDenied,
     AttributeNode,
+    AuthError,
     AuthorizationPending,
     CredentialStore,
     DeviceFlowAuthority,
+    DeviceFlowError,
     ExpiredToken,
     InvalidDeviceCode,
     PreferenceCredential,
@@ -24,10 +26,11 @@ from preferencelayer.ptp import (
 def _store():
     sk, did = new_user_keypair(seed=b"6" * 32)
     store = CredentialStore(sk, did)
-    store.put_credential(PreferenceCredential(did, PreferenceGraph(
-        category="laptops",
-        attributeNodes=[AttributeNode("performance", 0.8, 0.7)],
-    )))
+    for category in ("laptops", "headphones"):
+        store.put_credential(PreferenceCredential(did, PreferenceGraph(
+            category=category,
+            attributeNodes=[AttributeNode("performance", 0.8, 0.7)],
+        )))
     return store
 
 
@@ -96,6 +99,37 @@ def test_approve_unknown_user_code():
     auth = DeviceFlowAuthority(_store())
     with pytest.raises(InvalidDeviceCode):
         auth.approve("ZZZZ-ZZZZ")
+
+
+def test_missing_scope_rejected():
+    auth = DeviceFlowAuthority(_store())
+    # Omitted scope must be rejected (no implicit all-category wildcard).
+    with pytest.raises(DeviceFlowError):
+        auth.request_device_code("agent.shop")
+    with pytest.raises(DeviceFlowError):
+        auth.request_device_code("agent.shop", scope=None)
+    with pytest.raises(DeviceFlowError):
+        auth.request_device_code("agent.shop", scope=[])
+    with pytest.raises(DeviceFlowError):
+        auth.request_device_code("agent.shop", scope=[""])
+
+
+def test_wildcard_not_granted_implicitly_token_limited_to_requested_categories():
+    store = _store()
+    auth = DeviceFlowAuthority(store, interval=0)
+    resp = auth.request_device_code("agent.shop", scope=["laptops"])
+
+    # The approver can see exactly which categories are being requested.
+    assert auth.pending_scope(resp.user_code) == ["laptops"]
+
+    auth.approve(resp.user_code)
+    token = auth.poll_token(resp.device_code)
+
+    # Token works for the requested category only...
+    assert store.get_preference(token, "laptops")["status"] == 200
+    # ...and is NOT an all-category token: another category is rejected.
+    with pytest.raises(AuthError):
+        store.get_preference(token, "headphones")
 
 
 def test_revoke_after_device_flow_grant():
