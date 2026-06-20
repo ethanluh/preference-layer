@@ -73,13 +73,17 @@ def build_app(store: CredentialStore) -> "FastAPI":
         return 401 if "invalid or expired" in str(err) else 403
 
     def _handle(result: dict[str, Any]) -> dict[str, Any]:
-        """Translate a store result dict into an HTTP response / error."""
+        """Translate a store result dict into an HTTP response / error.
+
+        The internal ``status`` key drives the HTTP status code only; it is
+        off-spec in the response body (§4.2/§4.3), so strip it before returning.
+        """
         status = result.get("status", 200)
         if status == 404:
             raise HTTPException(status_code=404, detail=result.get("detail", "not found"))
         if status == 403:
             raise HTTPException(status_code=403, detail=result.get("detail", "forbidden"))
-        return result
+        return {k: v for k, v in result.items() if k != "status"}
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
