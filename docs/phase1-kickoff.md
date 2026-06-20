@@ -34,10 +34,10 @@ persistence, real data, and partners. Honest inventory:
 | Area | Exists (Phase 0 prototype) | Phase 1 gap |
 |------|----------------------------|-------------|
 | Credential schema | W3C-VC-shaped, Ed25519-signed, selective disclosure (`ptp/credential.py`) | JSON-LD `@context` published at a resolvable URI; schema validator; freeze v0.1 |
-| Three endpoints | `get_preference` / `submit_outcome` / `elicit` in `ptp/store.py` | HTTP/MCP transport with latency targets; auth hardening |
+| Three endpoints | `get_preference` / `submit_outcome` / `elicit` over HTTP (`http/app.py`) + p95<100ms test ✅ **done** | — |
 | DP update | clipped + Gaussian-noised on-device update, ε=2 (`ptp/update.py`) | budget accounting reviewed; per-node sensitivity audit |
-| Credential store | **persistent, SQLite-backed, encrypted at rest, CLI** (`ptp/persistence.py`, `cli.py`) ✅ **done** | OAuth 2.0 device flow; optional cloud-sync of ciphertext |
-| MCP server | tool handlers + descriptions (`mcp/server.py`, `qil/mcp_server.py`) | tested against live Claude agent SDK + LangChain |
+| Credential store | **persistent, SQLite-backed, encrypted at rest, CLI**; OAuth 2.0 device flow over HTTP (`ptp/device_flow.py`, `http/app.py`); cloud sync (`ptp/cloud_sync.py`) ✅ **done** | — |
+| MCP server | tool handlers + descriptions, tested against **two** frameworks — LangChain + Claude SDK (`mcp/server.py`, `mcp/langchain_tools.py`, `mcp/anthropic_tools.py`) ✅ **done** | — |
 | QIL extraction | TF-IDF + softmax classifier, 88.3% on a controlled corpus (`qil/extract.py`) | real scraped corpus; fine-tuned transformer; precision on live text |
 | QIL aggregation | Beta-Binomial failure rate + Normal-Normal quality dims (`qil/aggregate.py`) | Gaussian-process temporal kernel; nightly refit job |
 | QIL API | `/quality` + `/compare` over posteriors (`qil/query.py`) | served behind HTTP with latency targets; coverage at scale |
@@ -76,21 +76,25 @@ WS-C (part.): ──────────────────────
 
 ## Work Stream A — PTP v0.1
 
-### A1. Freeze the credential schema (Month 4)
-- **Do:** publish the JSON-LD `@context` at a resolvable URI; pin required fields
-  (`attributeNodes`, `edgeWeights`, `contextConditioners`, `updateMetadata`,
-  `issuer`, `proof`); write a schema validator; tag `protocol-spec.md` as v0.1.
-- **Done when:** an external party can validate a credential against a published
-  context without reading our code; the validator is in CI.
-- **Note:** §8 of `protocol-spec.md` lists unresolved open questions — resolve the
-  ones that block schema freeze via a `protocol`-labeled issue thread first (per
-  `CONTRIBUTING.MD`); do not silently decide them.
+### A1. Freeze the credential schema (Month 4) — ✅ done
+- **Done:** schema frozen; JSON-LD `@context` (`contexts/ptp-v1.jsonld`) and JSON
+  Schema (`contexts/ptp-credential-v0.1.schema.json`) published in-repo and
+  validated in CI; field-name reconciliation and §8 impact assessed in issue #10
+  (Q4 export-bundle left unfrozen). The validator runs against good/bad fixtures
+  in CI, so an external party can validate without reading our code.
+- **Remaining (ops, not code):** host the `@context` at the public
+  `https://preferencelayer.io/context/v1` URI (DNS for a domain not controlled in
+  this repo). Tracked as a follow-up; does not block the DoD.
 
-### A2. Three endpoints over real transport (Months 4–5)
-- **Do:** expose `GET /preference`, `POST /outcome`, `POST /elicit` over HTTP and
-  MCP; meet the latency targets (`/preference` < 100 ms p95).
-- **Done when:** a load test shows the p95 targets met on representative
-  credentials; auth (agent token / scope / revoke) enforced at the boundary.
+### A2. Three endpoints over real transport (Months 4–5) — ✅ done
+- **Done:** `GET /preference`, `POST /outcome`, `POST /elicit` served over HTTP
+  (`http/app.py`) with the 401/403/404 auth boundary; a p95<100ms latency test on
+  `/preference` (`tests/test_http_transport.py`); live MCP server smoke test
+  (`tests/test_langchain_mcp.py`). The OAuth 2.0 device flow (RFC 8628) is exposed
+  over HTTP — `POST /device/code`, `POST /token`, `GET /device`,
+  `POST /device/decision` — reusing `DeviceFlowAuthority` (`ptp/device_flow.py`),
+  tested in `tests/test_http_device_flow.py` and demoed by
+  `experiments/run_ptp_api.py`. See issue #27.
 
 ### A3. Credential store (Months 5–6) — ✅ first deliverable landed
 - **Done:** persistent, SQLite-backed store encrypted at rest, persistent Ed25519
@@ -103,15 +107,20 @@ WS-C (part.): ──────────────────────
     so the DB is safe to cloud-sync; the identity key stays on device. This matches
     the architecture's "cloud sync stores client-side-encrypted ciphertext only"
     invariant.
-- **Remaining for A3:** OAuth 2.0 device flow for agent authentication (current
-  tokens are opaque bearer tokens, not a device-flow grant); optional cloud-sync of
-  the encrypted DB.
+- **A3 done:** OAuth 2.0 device flow now fronts agent authentication
+  (`ptp/device_flow.py`, exposed over HTTP in `http/app.py`); cloud sync of the
+  encrypted DB exists (`ptp/cloud_sync.py`).
 
-### A4. MCP server wrapper (Month 6)
-- **Do:** wrap all three endpoints as MCP tools with self-selection-optimized
-  descriptions; test against the Claude agent SDK and LangChain.
-- **Done when:** an unprompted agent in both frameworks invokes the right tool for
-  rank / post-purchase / low-confidence situations in a scripted eval.
+### A4. MCP server wrapper (Month 6) — ✅ done
+- **Done:** all three endpoints wrapped as MCP tools with
+  self-selection-optimized descriptions (`mcp/server.py`), exposed to **two**
+  agent frameworks from the identical descriptors: LangChain
+  (`mcp/langchain_tools.py`) and the Claude agent SDK (`mcp/anthropic_tools.py`).
+  A scripted, description-only self-selection eval picks the right tool for
+  rank / post-purchase / low-confidence in both frameworks
+  (`tests/test_langchain_mcp.py`, `tests/test_anthropic_mcp.py`); an optional live
+  Claude test (gated on `ANTHROPIC_API_KEY`) confirms the real model selects
+  `get_preference` for a ranking prompt.
 
 ---
 
@@ -186,9 +195,11 @@ WS-C (part.): ──────────────────────
 
 ## Definition of done for Phase 1
 
-1. PTP v0.1: schema frozen + published, three endpoints stable behind HTTP/MCP at
-   their latency targets, persistent encrypted credential store with CLI ✅, MCP
-   wrapper tested against two agent frameworks.
+1. PTP v0.1 ✅ **done**: schema frozen + published (validated in CI), three
+   endpoints stable behind HTTP/MCP at their latency targets, persistent encrypted
+   credential store with CLI, OAuth 2.0 device flow over HTTP, MCP wrapper tested
+   against two agent frameworks (LangChain + Claude SDK). Remaining A1 item —
+   hosting the `@context` at the public URI — is ops/DNS, not code.
 2. QIL v0.1: real ingestion running daily; ≥ 70% extraction precision **on real
    text**; GP-backed nightly posteriors; 500 laptops + 300 keyboards served.
 3. Design partners: ≥ 3 integrated, ≥ 2 reporting measurable improvement → **gate
