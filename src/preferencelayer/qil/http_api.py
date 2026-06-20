@@ -36,11 +36,18 @@ def build_app(service: QualityService) -> Any:
     """
     try:
         from fastapi import FastAPI, Response
-        from pydantic import BaseModel, Field
+        from pydantic import BaseModel, Field, field_validator
     except ImportError as exc:  # pragma: no cover - dependency guard
         raise RuntimeError(
             "QIL HTTP API needs the optional [api] extra: pip install 'preferencelayer[api]'"
         ) from exc
+
+    def _require_nonempty_use_profile(value: str) -> str:
+        # Reject empty/whitespace at the edge (422); the service also guards (400).
+        # Quality is always use-profile-conditioned -- never a population aggregate.
+        if not (value and value.strip()):
+            raise ValueError("use_profile must be a non-empty string")
+        return value
 
     class QualityRequest(BaseModel):
         product_id: str
@@ -51,10 +58,14 @@ def build_app(service: QualityService) -> Any:
             default=None, description="Optional subset of quality dimensions."
         )
 
+        _check_use_profile = field_validator("use_profile")(_require_nonempty_use_profile)
+
     class CompareRequest(BaseModel):
         product_id_a: str
         product_id_b: str
         use_profile: str
+
+        _check_use_profile = field_validator("use_profile")(_require_nonempty_use_profile)
 
     app = FastAPI(
         title="PreferenceLayer QIL API",

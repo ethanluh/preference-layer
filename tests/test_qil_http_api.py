@@ -73,6 +73,19 @@ def test_request_validation_rejects_missing_fields():
     assert r.status_code == 422  # FastAPI/Pydantic validation
 
 
+def test_quality_rejects_empty_use_profile():
+    client = _client()
+    for bad in ("", "   "):
+        r = client.post("/quality", json={"product_id": "good", "use_profile": bad})
+        assert r.status_code == 422  # rejected at the Pydantic edge
+
+
+def test_compare_rejects_empty_use_profile():
+    r = _client().post("/compare",
+                       json={"product_id_a": "good", "product_id_b": "bad", "use_profile": ""})
+    assert r.status_code == 422
+
+
 def test_quality_p95_under_200ms():
     """Smoke latency check: the read path is an in-memory lookup, so p95 << 200ms.
 
