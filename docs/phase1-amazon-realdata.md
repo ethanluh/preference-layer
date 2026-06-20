@@ -44,6 +44,31 @@ is Phase 1 work (the QIL NLP pipeline)*. The real-data check makes that concrete
 synthetic Claim 1 result is a statement about the *model given good features*, and real
 data shows the features are the gating factor.
 
+### Larger-category check (Cell_Phones_and_Accessories)
+
+To rule out that the negative is a small-category artifact, the same within-category task
+was rerun on a category ~29× larger by user count: `Cell_Phones_and_Accessories`
+(184,070 items, **19,498** users with ≥5 reviews; interactions parsed up to the
+`--max-interactions 3000000` cap).
+
+| model | NDCG@10 |
+|-------|--------:|
+| flat_item_embedding | **0.0961** |
+| flat_attribute | 0.0870 |
+| preference_graph | 0.0433 |
+| popularity | 0.0189 |
+
+**preference_graph vs flat_attribute: −50.2% (p = 0.0002).**
+*(Reproduce: `python experiments/run_amazon_realdata.py --category Cell_Phones_and_Accessories --label cell_phones --max-items 6000 --max-interactions 3000000`.)*
+
+The conclusion **holds and sharpens at scale**: with ~29× more users (so very tight
+statistics) the graph is roughly *half* as good as the flat baseline, not better. Two
+further observations: `flat_item_embedding` now edges out `flat_attribute` — at scale the
+purchase-history embedding carries more signal than the coarse keyword-derived attribute
+vector — and popularity stays correctly neutralized by hard negatives (0.019). Both
+reinforce the same takeaway: the bottleneck is attribute/feature quality, and the graph's
+extra edge parameters only add variance when fed weak features.
+
 ---
 
 ## Scope and honesty notes
@@ -88,12 +113,18 @@ data shows the features are the gating factor.
 ## Reproducing
 
 ```bash
-pip install -e ".[amazon]"                     # pandas + pyarrow + huggingface_hub
+bash scripts/setup-amazon.sh                   # opt-in: installs the [amazon] extra
 python experiments/run_amazon_realdata.py      # loads All_Beauty, runs the comparison
+# larger category (cap interaction parsing with --max-interactions for tractability):
+python experiments/run_amazon_realdata.py \
+  --category Cell_Phones_and_Accessories --label cell_phones \
+  --max-items 6000 --max-interactions 3000000
 python -m pytest tests/test_amazon_loader.py   # offline assembly tests (no network)
 ```
 
-Raw metrics: [`experiments/amazon_realdata_results.json`](../experiments/amazon_realdata_results.json).
+Raw metrics: [`experiments/amazon_realdata_results.json`](../experiments/amazon_realdata_results.json)
+(All_Beauty), [`experiments/amazon_realdata_cell_phones_results.json`](../experiments/amazon_realdata_cell_phones_results.json)
+(Cell_Phones_and_Accessories).
 
 ---
 
@@ -102,7 +133,7 @@ Raw metrics: [`experiments/amazon_realdata_results.json`](../experiments/amazon_
 | Stage | Result |
 |-------|--------|
 | Claim 1 — preference graph beats flat baseline (synthetic transfer) | **+9.7%** NDCG@10 ([report](phase0-results.md)) |
-| Real-data check — same models on Amazon Reviews 2023 (coarse features) | **Advantage does not replicate** (graph −20.8% vs flat); attribute extraction is the bottleneck (this report) |
+| Real-data check — same models on Amazon Reviews 2023 (coarse features) | **Advantage does not replicate** (graph −20.8% vs flat on All_Beauty; **−50.2%** on Cell_Phones at 19.5k users); attribute extraction is the bottleneck (this report) |
 
 The takeaway sharpens the roadmap: the integration, blending, and protocol results
 stand on the *modeling* side, but turning them into real-world performance depends on

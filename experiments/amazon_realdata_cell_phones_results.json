@@ -1,0 +1,22 @@
+{
+  "config": {
+    "category": "Cell_Phones_and_Accessories",
+    "label": "cell_phones",
+    "max_items": 6000,
+    "max_interactions": 3000000,
+    "min_user_reviews": 5,
+    "seed": 7,
+    "n_items": 184070,
+    "n_users": 19498
+  },
+  "ndcg": {
+    "popularity": 0.018868084836626425,
+    "flat_item_embedding": 0.09608638345441381,
+    "flat_attribute": 0.08697105537136994,
+    "preference_graph": 0.043334701848496776
+  },
+  "graph_vs_flat_attribute": {
+    "rel_gain_pct": -50.173420727785995,
+    "p_value": 0.0002
+  }
+}
