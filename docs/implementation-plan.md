@@ -3,9 +3,31 @@
 ## PreferenceLayer: Phased Build Roadmap
 
 **Total timeline:** 24 months across four phases  
-**Current phase:** Phase 0
+**Current phase:** Phase 1 — Core Protocol & Minimal Viable Data Product
 
 Each phase has explicit go/no-go gates. Do not advance without meeting them.
+
+---
+
+## Phase 0 → Phase 1 gate decision (record)
+
+**Decision: ADVANCE to Phase 1.** Both Phase 0 go/no-go gates were met, with the
+results documented and reproducible from the experiment scripts:
+
+| Claim | Gate | Result | Report |
+|-------|------|--------|--------|
+| Claim 1 — preference graph beats flat baseline on cross-category transfer | ≥ 5% NDCG@10 | **+9.7%**, p = 0.0002 (robust across seeds) | [`phase0-results.md`](phase0-results.md) |
+| Claim 2 — use-profile quality extractable from public text | ≥ 70% precision | **88.3%** macro precision | [`phase0-qil-results.md`](phase0-qil-results.md) |
+
+Caveat carried into Phase 1: on **real** Amazon Reviews 2023 data with
+metadata-derived attributes, the graph's synthetic advantage did **not** replicate
+— the bottleneck is attribute-extraction quality, not the ranking model (see
+[`phase1-amazon-realdata.md`](phase1-amazon-realdata.md)). This makes the QIL NLP
+extraction pipeline (Work Stream B) the highest-risk Phase 1 item and is reflected
+in the kickoff sequencing.
+
+The Phase 1 plan below is operationalized into milestones, sequencing, and
+definitions-of-done in [`phase1-kickoff.md`](phase1-kickoff.md).
 
 ---
 
