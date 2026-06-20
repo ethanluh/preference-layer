@@ -132,6 +132,11 @@ class ExtractedSignal:
     quality_dim: str | None
     signal_value: float
     confidence: float
+    # Time of the observation relative to the product's release, in days
+    # (architecture.md: the quality-dim GP kernel is over release time). Optional
+    # so existing call-sites are unchanged; None means "release time" (t=0), at
+    # which the GP posterior reduces to the stationary conjugate estimate.
+    observed_at: float | None = None
 
 
 # Source-reliability weight applied to model confidence (architecture.md: "model
