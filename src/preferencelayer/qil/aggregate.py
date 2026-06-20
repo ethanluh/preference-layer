@@ -6,26 +6,26 @@ Implements the aggregation layer from ``docs/architecture.md``:
   A category-level base rate sets the prior ``Beta(a0, b0)``; each extracted
   ``failure`` signal increments failures, each non-failure increments
   non-failures. Posterior mean ``= a / (a + b)``.
-* **Quality dimensions** per ``(product_id, use_profile, quality_dim)``: the doc
-  specifies a Gaussian process over release time. Phase 0 uses the conjugate
-  **Normal-Normal** special case (no temporal kernel) as an honest, dependency-
-  free stand-in — it yields the same posterior-mean + credible-interval contract
-  the ``/quality`` API needs. The GP upgrade is Phase 1 work.
+* **Quality dimensions** per ``(product_id, use_profile, quality_dim)``: a
+  **Gaussian process** with a squared-exponential kernel over product release
+  time, exactly as ``docs/architecture.md`` specifies (Work Stream B3). This
+  replaces the Phase 0 Normal-Normal stand-in. The GP reduces to that conjugate
+  estimate when every observation shares the query time, so the
+  ``posterior_mean + 90% credible interval + evidence_count`` contract the
+  ``/quality`` API consumes is unchanged. See ``gp.py``.
 
-Each observation is weighted by its extraction ``confidence`` so low-confidence
-signals move the posterior less.
+Each observation is weighted by its extraction ``confidence`` (low-confidence
+signals get inflated GP noise, so they move the posterior less) and carries an
+optional ``observed_at`` time in days since release.
 """
 
 from __future__ import annotations
 
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 
 from .extract import ExtractedSignal
-
-# Z for a 90% credible interval (matches the architecture's "90% credible interval").
-_Z90 = 1.6448536269514722
+from .gp import GPHyperparams, fit_gp_posterior
 
 
 @dataclass
@@ -51,29 +51,49 @@ class FailureRatePosterior:
 
 
 class QualityAggregator:
-    """Aggregates extracted signals into per-(product, use_profile, dim) posteriors."""
+    """Aggregates extracted signals into per-(product, use_profile, dim) posteriors.
+
+    Quality dimensions use a Gaussian process over release time (``gp.py``);
+    failure rates use a category-base-rate Beta-Binomial. The GP query is
+    evaluated at ``query_time`` (days since release; 0 == release time), so a
+    caller can ask "current quality" by passing the product's age.
+    """
 
     def __init__(
         self,
-        prior_strength: float = 4.0,     # pseudo-observations for the quality-dim prior
-        prior_mean: float = 0.5,         # neutral quality prior
-        obs_std: float = 0.15,           # per-observation noise std
+        prior_mean: float = 0.5,             # neutral-quality GP prior mean
+        obs_std: float = 0.15,               # per-observation noise std (-> GP obs_var)
         failure_prior_count: float = 2.0,
+        lengthscale_days: float = 180.0,     # GP squared-exponential lengthscale
+        prior_strength: float = 4.0,         # prior "pseudo-observations"; -> GP signal_var
+        signal_var: float | None = None,     # GP prior variance; overrides prior_strength
+        query_time: float = 0.0,             # days since release to evaluate the GP at
     ):
-        self.prior_strength = prior_strength
         self.prior_mean = prior_mean
         self.obs_std = obs_std
         self.failure_prior_count = failure_prior_count
+        self.prior_strength = prior_strength
+        self.query_time = query_time
+        # Map the conjugate "prior_strength" onto the GP prior variance so the old
+        # lever is preserved: a strong prior (large prior_strength) is a tight
+        # (small) signal_var; prior_strength -> 0 is a near-flat prior, so the GP
+        # posterior mean collapses to the confidence-weighted sample mean ("raw").
+        if signal_var is None:
+            signal_var = (obs_std ** 2) / prior_strength if prior_strength > 0 else 1e9
+        self.gp_hp = GPHyperparams(
+            lengthscale_days=lengthscale_days,
+            signal_var=signal_var,
+            obs_var=obs_std ** 2,
+            prior_mean=prior_mean,
+        )
         self.quality: dict[tuple[str, str, str], QualityPosterior] = {}
         self.failure: dict[tuple[str, str], FailureRatePosterior] = {}
 
     def fit(self, signals: list[ExtractedSignal]) -> "QualityAggregator":
-        # --- continuous quality dimensions: weighted Normal-Normal conjugate ----
-        # Prior precision and (precision-weighted) mean accumulator.
-        prior_prec = self.prior_strength / (self.obs_std ** 2)
-        sum_prec: dict[tuple[str, str, str], float] = defaultdict(lambda: prior_prec)
-        sum_prec_mean: dict[tuple[str, str, str], float] = defaultdict(lambda: prior_prec * self.prior_mean)
-        counts: dict[tuple[str, str, str], int] = defaultdict(int)
+        # --- continuous quality dimensions: GP over release time ------------------
+        # Collect timed, confidence-weighted observations per (product, profile, dim).
+        Obs = tuple[list[float], list[float], list[float]]  # (times, values, confidences)
+        obs: dict[tuple[str, str, str], Obs] = defaultdict(lambda: ([], [], []))
 
         # --- failure rate: category-base-rate Beta-Binomial -----------------------
         fail_counts: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])  # [failures, non]
@@ -86,22 +106,22 @@ class QualityAggregator:
                 if s.quality_dim is None:
                     continue
                 key3 = (s.product_id, s.use_profile, s.quality_dim)
-                prec = s.confidence / (self.obs_std ** 2)
-                sum_prec[key3] += prec
-                sum_prec_mean[key3] += prec * s.signal_value
-                counts[key3] += 1
+                t = 0.0 if s.observed_at is None else float(s.observed_at)
+                times, values, confs = obs[key3]
+                times.append(t)
+                values.append(s.signal_value)
+                confs.append(s.confidence)
                 # A non-failure observation is also evidence of non-failure.
                 fail_counts[(s.product_id, s.use_profile)][1] += s.confidence
 
-        for key3, prec in sum_prec.items():
-            mean = sum_prec_mean[key3] / prec
-            std = math.sqrt(1.0 / prec)
+        for key3, (times, values, confs) in obs.items():
+            post = fit_gp_posterior(times, values, confs,
+                                    query_time=self.query_time, hp=self.gp_hp)
             self.quality[key3] = QualityPosterior(
                 product_id=key3[0], use_profile=key3[1], quality_dim=key3[2],
-                posterior_mean=float(mean), posterior_std=float(std),
-                credible_lo_90=float(max(0.0, mean - _Z90 * std)),
-                credible_hi_90=float(min(1.0, mean + _Z90 * std)),
-                evidence_count=counts[key3],
+                posterior_mean=post.mean, posterior_std=post.std,
+                credible_lo_90=post.credible_lo_90, credible_hi_90=post.credible_hi_90,
+                evidence_count=post.evidence_count,
             )
 
         a0 = self.failure_prior_count

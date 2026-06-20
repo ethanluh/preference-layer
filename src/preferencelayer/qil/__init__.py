@@ -11,8 +11,16 @@ from .aggregate import FailureRatePosterior, QualityAggregator, QualityPosterior
 from .corpus import Corpus, Sample, generate
 from .eval import GATE_PRECISION, ClassificationReport, evaluate
 from .extract import ExtractedSignal, QILExtractor, SoftmaxClassifier, TfidfVectorizer
+from .gp import GPHyperparams, GPPosterior, fit_gp_posterior
 from .mcp_server import QIL_TOOLS, QILToolHandler
 from .query import QualityService
+from .refit import (
+    InMemoryPosteriorSink,
+    PostgresPosteriorSink,
+    PosteriorSink,
+    QualityPosteriorRow,
+    run_nightly_refit,
+)
 
 __all__ = [
     "schema",
@@ -33,4 +41,12 @@ __all__ = [
     "evaluate",
     "ClassificationReport",
     "GATE_PRECISION",
+    "fit_gp_posterior",
+    "GPHyperparams",
+    "GPPosterior",
+    "run_nightly_refit",
+    "QualityPosteriorRow",
+    "PosteriorSink",
+    "InMemoryPosteriorSink",
+    "PostgresPosteriorSink",
 ]
