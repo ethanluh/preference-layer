@@ -51,6 +51,12 @@ was rerun on a category ~29× larger by user count: `Cell_Phones_and_Accessories
 (184,070 items, **19,498** users with ≥5 reviews; interactions parsed up to the
 `--max-interactions 3000000` cap).
 
+> Note: `--max-items` is checked *per metadata shard*, not per row, so `--max-items 6000`
+> here loads the whole first shard (184,070 items) rather than stopping at 6,000 — which
+> is what the JSON config (`max_items: 6000`, `n_items: 184070`) honestly records. The
+> larger load is harmless (more candidates), but the flag is coarser than it looks; making
+> the cap row-precise is a tracked follow-up.
+
 | model | NDCG@10 |
 |-------|--------:|
 | flat_item_embedding | **0.0961** |
