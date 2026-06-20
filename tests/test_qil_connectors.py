@@ -94,11 +94,12 @@ def test_structured_connectors_parse_clean_documents(cls, kwargs, fixture, sourc
         assert d.text                      # title + body joined, non-empty
         assert d.source_url                # per-record url present in fixtures
         assert d.content_hash
-        # No user-identifier field smuggled onto the document.
-        assert not (_IDENTIFIER_FIELDS_SET & set(d.__dict__))
-
-
-_IDENTIFIER_FIELDS_SET = set(_IDENTIFIER_FIELDS)
+        # The fixtures seed an `author` on a record; the _emit key-whitelist must
+        # never read it, so neither the field nor its value reaches the document.
+        blob = json.dumps(d.__dict__).lower()
+        for field in _IDENTIFIER_FIELDS:
+            assert field not in d.__dict__
+        assert "synthetic_user" not in blob  # seeded author value never propagated
 
 
 def test_ifixit_favorites_map_to_upvote_count():

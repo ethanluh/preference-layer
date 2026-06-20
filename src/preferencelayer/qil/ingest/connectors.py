@@ -157,8 +157,8 @@ class _LiveConnector(Connector):
                 if isinstance(value, list):
                     return value
         raise ValueError(
-            f"{type(self).__name__ if isinstance(payload, type) else 'connector'}: "
-            f"expected a list or a dict with one of {container_keys!r}"
+            f"connector: expected a list or a dict with one of {container_keys!r}, "
+            f"got {type(payload).__name__}"
         )
 
     def _emit(

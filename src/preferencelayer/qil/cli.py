@@ -33,10 +33,13 @@ from .extract import ExtractedSignal, QILExtractor
 from .ingest import (
     CanonicalProduct,
     FixtureConnector,
+    IFixitConnector,
     InMemorySink,
     IngestionStats,
+    NotebookcheckConnector,
     ProductRegistry,
     ProductSignalRow,
+    RedditConnector,
     run_daily,
 )
 from .refit import InMemoryPosteriorSink, PosteriorSink, run_nightly_refit
@@ -135,12 +138,28 @@ def run_ingest(
     return stats, written
 
 
-def _connectors_from_dir(fixtures_dir: Path, category: str) -> list:
-    """One FixtureConnector per ``*.json`` record-list in a directory.
+# Live connectors keyed by filename-stem source (reddit_*.json -> reddit).
+_LIVE_CONNECTORS = {
+    "reddit": RedditConnector,
+    "ifixit": IFixitConnector,
+    "notebookcheck": NotebookcheckConnector,
+}
 
-    The source_type is taken from the filename stem (``reddit_*.json`` -> reddit).
-    Files whose top-level JSON is not a list are skipped (e.g. live-connector API
-    payloads, which are a different shape) so a mixed directory is tolerated.
+
+def _connectors_from_dir(fixtures_dir: Path, category: str) -> list:
+    """Build one connector per ``*.json`` fixture in a directory.
+
+    The source is the filename stem (``reddit_*.json`` -> reddit). Two shapes flow:
+
+    * **list-shaped** files are ``FixtureConnector`` record-lists
+      (``[{source_local_id, text, ...}]``);
+    * **dict-shaped** files are treated as a captured live-source payload and
+      replayed through the matching live connector's real ``_parse`` via an
+      injected ``fetch`` -- so the iFixit / Notebookcheck / Reddit-listing parsers
+      flow through the CLI offline, not only the unit tests.
+
+    Files with an unrecognized source or shape are skipped, so a mixed directory
+    is tolerated.
     """
     connectors = []
     for p in sorted(fixtures_dir.glob("*.json")):
@@ -148,11 +167,17 @@ def _connectors_from_dir(fixtures_dir: Path, category: str) -> list:
             data = json.loads(p.read_text())
         except json.JSONDecodeError:
             continue
-        if not isinstance(data, list):
-            continue
-        connectors.append(FixtureConnector(category, p, source_type=p.stem.split("_")[0]))
+        source = p.stem.split("_")[0]
+        if isinstance(data, list):
+            connectors.append(FixtureConnector(category, p, source_type=source))
+        elif isinstance(data, dict) and source in _LIVE_CONNECTORS:
+            connectors.append(
+                _LIVE_CONNECTORS[source](
+                    category, [f"fixture://{p.name}"], fetch=lambda _url, _d=data: _d
+                )
+            )
     if not connectors:
-        raise SystemExit(f"qil-ingest: no FixtureConnector record-list *.json found in {fixtures_dir}")
+        raise SystemExit(f"qil-ingest: no usable *.json fixtures found in {fixtures_dir}")
     return connectors
 
 

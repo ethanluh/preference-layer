@@ -2,6 +2,7 @@
   "reviews": [
     {
       "id": "nbc-001",
+      "author": "synthetic_user_nbc",
       "title": "Lenovo ThinkPad X1 Carbon Gen 12 Review",
       "verdict": "Strong sustained performance for professional workloads, but the chassis runs warm and throttles under prolonged compute.",
       "url": "https://www.notebookcheck.net/nbc-001",
