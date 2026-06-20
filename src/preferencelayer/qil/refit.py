@@ -64,8 +64,13 @@ class InMemoryPosteriorSink(PosteriorSink):
         return n
 
 
-class PostgresPosteriorSink(PosteriorSink):  # pragma: no cover - requires a live DB
-    """INSERT ... ON CONFLICT DO UPDATE into quality_posterior. Parameters only."""
+class PostgresPosteriorSink(PosteriorSink):
+    """INSERT ... ON CONFLICT DO UPDATE into quality_posterior. Parameters only.
+
+    Pass any DB-API 2.0 connection. The SQL/param wiring is covered by a
+    fake-DB-API test (tests/test_qil_postgres_sinks.py); only a live Postgres
+    exercises the real upsert constraint.
+    """
 
     _UPSERT = """
         INSERT INTO quality_posterior (

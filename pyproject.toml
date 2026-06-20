@@ -28,6 +28,7 @@ anthropic = ["anthropic>=0.40"]  # only for the optional live Claude tool-select
 [project.scripts]
 preflayer = "preferencelayer.cli:main"
 preflayer-validate = "preferencelayer.ptp.schema_validate:main"
+qil-refit = "preferencelayer.qil.cli:refit_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

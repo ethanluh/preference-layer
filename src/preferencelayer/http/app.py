@@ -24,7 +24,7 @@ behavioral data.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NoReturn
 
 from ..ptp.device_flow import DeviceFlowAuthority, DeviceFlowError
 from ..ptp.store import AuthError, CredentialStore
@@ -243,7 +243,7 @@ def build_app(
     return app
 
 
-def _raise_device_error(e: "DeviceFlowError") -> "None":
+def _raise_device_error(e: "DeviceFlowError") -> "NoReturn":
     """Map an RFC 8628 ``DeviceFlowError`` to an HTTP 400 OAuth error body.
 
     The token endpoint signals pending/slow-down/denied/expired/invalid via a
