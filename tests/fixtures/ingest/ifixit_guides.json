@@ -1,0 +1,24 @@
+{
+  "guides": [
+    {
+      "guideid": 12345,
+      "title": "ThinkPad X1 Carbon Gen 12 Fan Replacement",
+      "introduction": "The cooling fan in the X1 Carbon Gen 12 can fail after sustained thermal load, causing throttling under prolonged compute.",
+      "conclusion": "Replacing the fan restores sustained performance and fixes the throttling.",
+      "url": "https://www.ifixit.com/Guide/12345",
+      "favorites": 8
+    },
+    {
+      "guideid": 12346,
+      "title": "Dell XPS 15 9530 Battery Replacement",
+      "introduction": "Battery swelling after a year of heavy travel and daily charging is a common XPS 15 9530 failure mode.",
+      "url": "https://www.ifixit.com/Guide/12346",
+      "favorites": 3
+    },
+    {
+      "guideid": 0,
+      "title": "",
+      "introduction": ""
+    }
+  ]
+}
