@@ -1,10 +1,15 @@
 # Preference Transport Protocol (PTP)
 
-## Draft Specification v0.1
+## Specification v0.1 (credential schema frozen)
 
-**Status:** Draft  
+**Status:** v0.1 — credential schema **frozen** (June 2026). The per-credential
+schema in §3 is published as a JSON-LD `@context` (`contexts/ptp-v1.jsonld`) and a
+JSON Schema (`contexts/ptp-credential-v0.1.schema.json`), validated in CI. The API
+(§4), auth (§4.1), and §8 open questions remain in flux. See issue #10 for the
+freeze rationale and the §8 impact assessment (Q4 export-bundle format is left
+unfrozen for v0.1).  
 **Authors:** PreferenceLayer Contributors  
-**Last Updated:** May 2026
+**Last Updated:** June 2026
 
 ---
 

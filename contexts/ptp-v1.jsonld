@@ -1,0 +1,54 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+
+    "id": "@id",
+    "type": "@type",
+
+    "ptp": "https://preferencelayer.io/vocab/ptp#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "sec": "https://w3id.org/security#",
+
+    "PreferenceCredential": "ptp:PreferenceCredential",
+
+    "credentialSubject": {
+      "@id": "ptp:credentialSubject",
+      "@type": "@id"
+    },
+
+    "preferenceGraph": {
+      "@id": "ptp:preferenceGraph",
+      "@context": {
+        "@protected": true,
+
+        "category": { "@id": "ptp:category", "@type": "xsd:string" },
+        "version": { "@id": "ptp:version", "@type": "xsd:string" },
+
+        "attributeNodes": { "@id": "ptp:attributeNodes", "@container": "@set" },
+
+        "edges": { "@id": "ptp:edges", "@container": "@set" },
+        "edgeWeights": { "@id": "ptp:edges", "@container": "@set" },
+
+        "contextConditioners": { "@id": "ptp:contextConditioners", "@container": "@set" },
+
+        "updateMetadata": { "@id": "ptp:updateMetadata", "@type": "@id" },
+        "updateCount": { "@id": "ptp:updateCount", "@type": "xsd:integer" },
+        "privacyBudgetConsumed": { "@id": "ptp:privacyBudgetConsumed", "@type": "xsd:double" },
+        "lastUpdated": { "@id": "ptp:lastUpdated", "@type": "xsd:dateTime" },
+        "coldStartPrior": { "@id": "ptp:coldStartPrior", "@type": "xsd:string" },
+
+        "source": { "@id": "ptp:source", "@type": "xsd:string" },
+        "target": { "@id": "ptp:target", "@type": "xsd:string" },
+        "weight": { "@id": "ptp:weight", "@type": "xsd:double" },
+        "confidence": { "@id": "ptp:confidence", "@type": "xsd:double" },
+        "embedding": { "@id": "ptp:embedding", "@container": "@list" },
+        "contextKey": { "@id": "ptp:contextKey", "@type": "xsd:string" },
+        "activeNodes": { "@id": "ptp:activeNodes", "@container": "@set" },
+        "suppressedNodes": { "@id": "ptp:suppressedNodes", "@container": "@set" }
+      }
+    },
+
+    "proof": { "@id": "sec:proof", "@type": "@id", "@container": "@graph" }
+  }
+}
