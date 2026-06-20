@@ -8,6 +8,12 @@ from .credential import (
     new_user_keypair,
 )
 from .store import CredentialStore, AuthError, context_to_nodes
+from .persistence import (
+    IdentityLocked,
+    PersistentCredentialStore,
+    StoreNotFound,
+    default_home,
+)
 from .update import DPConfig, BudgetExhausted, apply_outcome, gaussian_sigma
 
 __all__ = [
@@ -19,6 +25,10 @@ __all__ = [
     "did_key_from_public",
     "new_user_keypair",
     "CredentialStore",
+    "PersistentCredentialStore",
+    "IdentityLocked",
+    "StoreNotFound",
+    "default_home",
     "AuthError",
     "context_to_nodes",
     "DPConfig",
