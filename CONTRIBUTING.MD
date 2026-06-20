@@ -27,6 +27,15 @@ The immediate open questions are:
 
 ---
 
+## Merging
+
+Pull requests are integrated with GitHub's **Rebase and merge** — not *Squash and merge*,
+and not a merge commit. This keeps `main` a linear history of the original, individually
+reviewed and CI'd commits, with no synthetic merge or squash commits. Keep your PR's commit
+history clean (rebase/amend locally) so what lands on `main` reads well.
+
+---
+
 ## Code Style
 
 - Python: PEP 8, type hints required on public functions, docstrings for anything non-obvious.
