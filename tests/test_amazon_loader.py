@@ -6,7 +6,7 @@ small in-memory inputs — the live ``load_category`` fetch is not run in CI.
 
 import numpy as np
 
-from preferencelayer.data.amazon import build_category_data
+from preferencelayer.data.amazon import _collect_metas, build_category_data
 from preferencelayer.data.synthetic import CategoryData
 
 
@@ -71,3 +71,37 @@ def test_unknown_items_in_interactions_are_ignored():
     interactions = [("u1", "p_perf", 5.0), ("u1", "ghost", 5.0)] + [("u1", p, 4.0) for p in list(metas)[:4]]
     cat = build_category_data(metas, interactions, "laptops", min_user_reviews=3, seed=1)
     assert "ghost" not in cat.purchases.get("u1", [])    # item not in metadata is skipped
+
+
+def _shard(n, start=0):
+    return [{"parent_asin": f"p{i}"} for i in range(start, start + n)]
+
+
+def test_collect_metas_caps_mid_shard():
+    # A single shard of 10 items, capped at 3 -> stops mid-shard, no overshoot.
+    metas = _collect_metas([_shard(10)], max_items=3)
+    assert len(metas) == 3
+    assert set(metas) == {"p0", "p1", "p2"}
+
+
+def test_collect_metas_dedups_and_spans_shards():
+    # Cap reached only in the second shard; duplicate ids across shards are not recounted.
+    shards = [_shard(2), _shard(3, start=1)]  # p0,p1 | p1,p2,p3 -> unique p0..p3
+    metas = _collect_metas(shards, max_items=4)
+    assert set(metas) == {"p0", "p1", "p2", "p3"}
+
+
+def test_collect_metas_is_lazy_no_extra_shards():
+    # Once the cap is hit the generator must not be asked for further shards (no extra
+    # downloads in the real loader). A second shard that raises proves we never reach it.
+    def gen():
+        yield _shard(5)
+        raise AssertionError("second shard fetched after cap was already reached")
+
+    metas = _collect_metas(gen(), max_items=3)
+    assert len(metas) == 3
+
+
+def test_collect_metas_under_cap_returns_all():
+    metas = _collect_metas([_shard(2), _shard(2, start=2)], max_items=100)
+    assert len(metas) == 4

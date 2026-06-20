@@ -165,6 +165,27 @@ def build_category_data(
     )
 
 
+def _collect_metas(shard_records: Iterable[Iterable[dict]], max_items: int) -> dict[str, dict]:
+    """Collect unique item metadata across shards up to a **row-precise** ``max_items`` cap.
+
+    ``shard_records`` yields one record iterable per metadata shard. Collection stops as
+    soon as ``max_items`` unique items (keyed by ``parent_asin``) have been seen — mid-shard
+    if necessary — rather than overshooting to a shard boundary. Because the cap short-
+    circuits, a lazy ``shard_records`` generator never produces shards beyond the one that
+    fills the cap (so no extra downloads). Split out from :func:`load_category` so it is
+    unit-testable offline.
+    """
+    metas: dict[str, dict] = {}
+    for records in shard_records:
+        for row in records:
+            pid = row.get("parent_asin")
+            if pid and pid not in metas:
+                metas[pid] = row
+                if len(metas) >= max_items:
+                    return metas
+    return metas
+
+
 def load_category(
     category_config: str,
     category_label: str,
@@ -187,16 +208,15 @@ def load_category(
     if not shards:
         raise ValueError(f"no Parquet metadata for category '{category_config}' "
                          f"(it may only exist via the legacy loading script)")
-    metas: dict[str, dict] = {}
-    for shard in shards:
-        frame = pd.read_parquet(hf_hub_download(_REPO, shard, repo_type="dataset"),
-                                columns=list(_META_COLUMNS))
-        for row in frame.to_dict("records"):
-            pid = row.get("parent_asin")
-            if pid and pid not in metas:
-                metas[pid] = row
-        if len(metas) >= max_items:
-            break
+    def _shard_records():
+        # Lazy: a shard is downloaded only when _collect_metas asks for it, so once the
+        # cap is hit no further shards are fetched.
+        for shard in shards:
+            frame = pd.read_parquet(hf_hub_download(_REPO, shard, repo_type="dataset"),
+                                    columns=list(_META_COLUMNS))
+            yield frame.to_dict("records")
+
+    metas = _collect_metas(_shard_records(), max_items)
 
     csv = hf_hub_download(_REPO, f"benchmark/0core/last_out/{category_config}.train.csv",
                           repo_type="dataset")
