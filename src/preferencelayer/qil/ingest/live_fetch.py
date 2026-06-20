@@ -9,6 +9,12 @@ run live ingestion by injecting credentials -- no connector changes needed.
     iFixit:        polite HTTP GET -> guides JSON
     Notebookcheck: polite HTTP GET -> HTML, parsed to records by an injected parser
 
+Data-source strategy (``docs/data-source-strategy.md``): Reddit runs on the
+research/free tier and is the only source wired by default in
+``cli.build_live_connectors``; iFixit and Notebookcheck are **parked** -- their
+adapters below are retained and tested, but not crawled by default. They are a
+later step, gated on a proven data gap after Reddit + retailer return data.
+
 The HTTP transport is injectable (``http=``) so the OAuth handshake, header
 assembly, and crawl-delay pacing are unit-tested against a fake transport with no
 network. ``requests`` is an optional dependency (the ``[amazon]``/HTTP extras
