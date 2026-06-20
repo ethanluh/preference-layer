@@ -101,6 +101,14 @@ class ConditionScore:
     per_query_ndcg: list[float] = field(default_factory=list)
 
 
+# Default minimum number of queries before a significance verdict is trusted.
+# A paired bootstrap over a handful of queries can flag random noise as
+# "significant", so below this floor we refuse the verdict and surface the
+# result as underpowered instead. 20 is a conventional small-sample floor; a
+# partner with fewer queries should gather more before relying on the gate.
+DEFAULT_MIN_QUERIES = 20
+
+
 @dataclass
 class PartnerResult:
     """Before/after measurement for a single design partner."""
@@ -113,6 +121,16 @@ class PartnerResult:
     abs_gain: float          # after.ndcg - before.ndcg
     rel_gain_pct: float      # 100 * abs_gain / before.ndcg
     p_value: float           # paired bootstrap on per-query NDCG@k, two-sided
+
+    @property
+    def underpowered(self) -> bool:
+        """Convenience: too few queries to trust the significance verdict?
+
+        Compares :attr:`n_queries` against the default :data:`DEFAULT_MIN_QUERIES`
+        floor. When ``True``, :attr:`improved` is forced to ``False`` regardless
+        of the p-value — see :func:`partner_improved`.
+        """
+        return self.n_queries < DEFAULT_MIN_QUERIES
 
     @property
     def improved(self) -> bool:
@@ -258,20 +276,42 @@ def partner_improved(
     *,
     min_abs_gain: float = 0.0,
     max_p_value: float = 0.05,
+    min_queries: int = DEFAULT_MIN_QUERIES,
 ) -> bool:
     """Did one partner show a *measurable* improvement in relevance?
 
     "Measurable" is operationalized as: the after-credential NDCG@k is higher
     than the before condition by more than ``min_abs_gain`` (default: any positive
     gain), **and** that improvement is statistically significant at
-    ``max_p_value`` on the paired bootstrap (default p < 0.05). Requiring
-    significance guards against a partner with a handful of queries calling random
-    noise an "improvement".
+    ``max_p_value`` on the paired bootstrap (default p < 0.05), **and** the
+    measurement is based on at least ``min_queries`` queries
+    (default :data:`DEFAULT_MIN_QUERIES`).
+
+    The ``min_queries`` floor is a power guard: a paired bootstrap over only a
+    handful of queries can flag random noise as "significant", so below the floor
+    we refuse the verdict outright (return ``False``) rather than trip the gate on
+    an underpowered sample. Use :func:`is_underpowered` (or
+    :attr:`PartnerResult.underpowered`) to distinguish "no improvement" from "too
+    few queries to tell". Pass ``min_queries=0`` to disable the guard.
 
     Tighten ``min_abs_gain`` (e.g. ``0.02``) if the gate should demand a
     practically meaningful lift, not merely a statistically detectable one.
     """
+    if result.n_queries < min_queries:
+        return False
     return result.abs_gain > min_abs_gain and result.p_value < max_p_value
+
+
+def is_underpowered(
+    result: PartnerResult, *, min_queries: int = DEFAULT_MIN_QUERIES
+) -> bool:
+    """Were there too few queries to trust the significance verdict?
+
+    Returns ``True`` when ``result.n_queries < min_queries``. In that case
+    :func:`partner_improved` refuses to report an improvement on significance
+    alone — the result should be surfaced as underpowered, not as a pass/fail.
+    """
+    return result.n_queries < min_queries
 
 
 @dataclass
@@ -284,6 +324,7 @@ class GateReport:
     passed: bool
     improved_partners: list[str]
     per_partner: dict[str, bool]
+    underpowered_partners: list[str] = field(default_factory=list)
 
 
 def gate_passed(
@@ -292,6 +333,7 @@ def gate_passed(
     required: int = 2,
     min_abs_gain: float = 0.0,
     max_p_value: float = 0.05,
+    min_queries: int = DEFAULT_MIN_QUERIES,
 ) -> GateReport:
     """Evaluate the Phase 1 WS-C gate: ≥ ``required`` partners show improvement.
 
@@ -302,15 +344,28 @@ def gate_passed(
     an absolute count of improvers, not a fraction, so a 2-of-3 or 2-of-5 cohort
     both pass at ``required=2``.
 
+    The ``min_queries`` power guard is applied per partner: a partner measured on
+    fewer than ``min_queries`` queries is **not** counted as an improver on
+    significance alone, and is instead listed in
+    :attr:`GateReport.underpowered_partners` so the cohort owner can see the gate
+    was not tripped by a tiny sample. Pass ``min_queries=0`` to disable.
+
     Returns a :class:`GateReport` so a caller can see *which* partners improved,
     not just whether the threshold was met.
     """
     per_partner = {
         r.partner_id: partner_improved(
-            r, min_abs_gain=min_abs_gain, max_p_value=max_p_value)
+            r,
+            min_abs_gain=min_abs_gain,
+            max_p_value=max_p_value,
+            min_queries=min_queries,
+        )
         for r in results
     }
     improved = [pid for pid, ok in per_partner.items() if ok]
+    underpowered = [
+        r.partner_id for r in results if is_underpowered(r, min_queries=min_queries)
+    ]
     return GateReport(
         n_partners=len(results),
         n_improved=len(improved),
@@ -318,4 +373,5 @@ def gate_passed(
         passed=len(improved) >= required,
         improved_partners=improved,
         per_partner=per_partner,
+        underpowered_partners=underpowered,
     )
