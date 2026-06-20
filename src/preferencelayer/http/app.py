@@ -1,4 +1,4 @@
-"""FastAPI app exposing the three PTP endpoints (spec §4).
+"""FastAPI app exposing the PTP endpoints (spec §4).
 
 ``build_app(store)`` returns a FastAPI application that serves:
 
@@ -6,17 +6,27 @@
 * ``POST /outcome``    — enqueue + apply a DP update, re-sign (spec §4.3)
 * ``POST /elicit``     — propose high-information-gain questions (spec §4.4)
 
-Auth is enforced at the boundary: every request must carry
+and the OAuth 2.0 Device Authorization Grant (RFC 8628, spec §4.1) used to
+obtain an agent token in the first place:
+
+* ``POST /device/code``     — agent requests a device + user code
+* ``POST /token``           — agent polls for the scoped bearer token
+* ``GET  /device``          — owner inspects a pending request's scope
+* ``POST /device/decision`` — owner approves or denies a pending request
+
+Auth is enforced at the boundary: every credential request must carry
 ``Authorization: Bearer <agent-token>``. Missing/expired tokens -> 401;
 out-of-scope categories -> 403 (the store raises ``AuthError``); absent
-credential -> 404. The store's own logic is reused unchanged — this module adds
-no preference logic and persists no behavioral data.
+credential -> 404. The store's own logic — and ``DeviceFlowAuthority`` — are
+reused unchanged: this module adds no preference logic and persists no
+behavioral data.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..ptp.device_flow import DeviceFlowAuthority, DeviceFlowError
 from ..ptp.store import AuthError, CredentialStore
 
 try:  # optional dependency, only needed to actually serve HTTP
@@ -26,6 +36,9 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
     raise ImportError(
         "HTTP transport requires the 'http' extra: pip install 'preferencelayer[http]'"
     ) from exc
+
+# RFC 8628 device-code grant type for the token endpoint.
+DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 
 
 class PreferenceRequest(BaseModel):
@@ -51,6 +64,22 @@ class ElicitRequest(BaseModel):
     max_questions: int = 3
 
 
+class DeviceCodeRequest(BaseModel):
+    client_id: str
+    scope: list[str] | None = None
+
+
+class TokenRequest(BaseModel):
+    grant_type: str
+    device_code: str
+    client_id: str | None = None
+
+
+class DecisionRequest(BaseModel):
+    user_code: str
+    decision: str = Field(..., description="approve|deny")
+
+
 def _bearer(authorization: str | None) -> str:
     """Extract the bearer token or raise 401 at the boundary."""
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -61,9 +90,19 @@ def _bearer(authorization: str | None) -> str:
     return token
 
 
-def build_app(store: CredentialStore) -> "FastAPI":
-    """Build the PTP HTTP app over an existing credential store."""
+def build_app(
+    store: CredentialStore,
+    *,
+    device_authority: "DeviceFlowAuthority | None" = None,
+) -> "FastAPI":
+    """Build the PTP HTTP app over an existing credential store.
+
+    ``device_authority`` powers the RFC 8628 device-flow routes (spec §4.1). If
+    omitted, one is constructed bound to ``store`` so an agent can obtain a token
+    out of the box; pass an explicit instance to configure the verification URI.
+    """
     app = FastAPI(title="PreferenceLayer PTP", version="0.1")
+    authority = device_authority or DeviceFlowAuthority(store)
 
     def auth_header(authorization: str | None = Header(default=None)) -> str:
         return _bearer(authorization)
@@ -132,4 +171,83 @@ def build_app(store: CredentialStore) -> "FastAPI":
             raise HTTPException(status_code=_auth_status(e), detail=str(e))
         return _handle(result)
 
+    # ------------------------------------------------------- device flow (§4.1)
+    @app.post("/device/code")
+    def device_code(req: DeviceCodeRequest) -> dict[str, Any]:
+        try:
+            resp = authority.request_device_code(req.client_id, scope=req.scope)
+        except DeviceFlowError as e:
+            _raise_device_error(e)
+        return {
+            "device_code": resp.device_code,
+            "user_code": resp.user_code,
+            "verification_uri": resp.verification_uri,
+            "verification_uri_complete": resp.verification_uri_complete,
+            "expires_in": resp.expires_in,
+            "interval": resp.interval,
+        }
+
+    @app.post("/token")
+    def token(req: TokenRequest) -> dict[str, Any]:
+        if req.grant_type != DEVICE_CODE_GRANT:
+            # RFC 8628 reuses the OAuth 2.0 token endpoint; an unsupported grant
+            # is a 400 invalid_request per RFC 6749 §5.2.
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "unsupported_grant_type",
+                    "error_description": f"grant_type must be '{DEVICE_CODE_GRANT}'",
+                },
+            )
+        try:
+            access_token = authority.poll_token(req.device_code)
+        except DeviceFlowError as e:
+            _raise_device_error(e)
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": authority.token_ttl,
+        }
+
+    @app.get("/device")
+    def device_pending(user_code: str) -> dict[str, Any]:
+        """Owner-side: surface the categories a pending request is asking for."""
+        try:
+            scope = authority.pending_scope(user_code)
+        except DeviceFlowError as e:
+            _raise_device_error(e)
+        return {"user_code": user_code, "scope": scope}
+
+    @app.post("/device/decision")
+    def device_decision(req: DecisionRequest) -> dict[str, Any]:
+        """Owner-side approval surface.
+
+        NOTE: owner authentication on this route is a production follow-up — the
+        v0.1 store is a local single-user daemon, so the owner is the local user.
+        """
+        decision = req.decision.strip().lower()
+        if decision not in ("approve", "deny"):
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_request", "error_description": "decision must be 'approve' or 'deny'"},
+            )
+        try:
+            if decision == "approve":
+                authority.approve(req.user_code)
+            else:
+                authority.deny(req.user_code)
+        except DeviceFlowError as e:
+            _raise_device_error(e)
+        return {"user_code": req.user_code, "decision": decision, "status": "ok"}
+
     return app
+
+
+def _raise_device_error(e: "DeviceFlowError") -> "None":
+    """Map an RFC 8628 ``DeviceFlowError`` to an HTTP 400 OAuth error body.
+
+    The token endpoint signals pending/slow-down/denied/expired/invalid via a
+    400 with an ``error`` code (RFC 8628 §3.5 / RFC 6749 §5.2), not an HTTP-level
+    status, so clients parse the body to decide whether to keep polling.
+    """
+    raise HTTPException(status_code=400, detail={"error": e.error, "error_description": str(e)})

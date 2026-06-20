@@ -117,6 +117,15 @@ Agents authenticate via OAuth 2.0 Device Authorization Grant (RFC 8628). The cre
 
 Token expiry: 24 hours. Refresh tokens are not issued; agents must re-authenticate after expiry.
 
+The grant is exposed over HTTP as:
+
+- `POST /device/code` — agent requests authorization for a `client_id` and an explicit, non-empty `scope` (list of categories; an implicit all-category wildcard cannot be requested). Returns `device_code`, `user_code`, `verification_uri`, `verification_uri_complete`, `expires_in`, `interval`.
+- `POST /token` — agent polls with `grant_type=urn:ietf:params:oauth:grant-type:device_code` and the `device_code`. While unresolved, the endpoint returns **HTTP 400** with an OAuth `error` code (`authorization_pending`, `slow_down`, `access_denied`, `expired_token`, `invalid_grant`); on approval it returns `{ access_token, token_type: "Bearer", expires_in }`. The `device_code` is single-use.
+- `GET /device?user_code=...` — owner-side: surfaces the categories a pending request is asking for, so the human approves the exact scope.
+- `POST /device/decision` — owner-side: `{ user_code, decision: "approve" | "deny" }`.
+
+> **v0.1 note.** The owner approval routes (`GET /device`, `POST /device/decision`) assume the local single-user credential-store daemon model, where the owner is the local user. Owner-side authentication on these routes is a production follow-up.
+
 ### 4.2 GET /preference
 
 Retrieve a scoped preference credential for the authenticated agent.
