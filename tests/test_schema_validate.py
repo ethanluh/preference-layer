@@ -87,6 +87,28 @@ def test_real_credential_validates():
     assert is_valid(_full_credential())
 
 
+def test_cold_start_credential_without_edges_validates():
+    """A freshly built cold-start credential (attribute nodes, NO edges) must
+    serialize and PASS the frozen schema. ``edges`` is OPTIONAL (absent == [])."""
+    sk, did = new_user_keypair(seed=b"9" * 32)
+    graph = PreferenceGraph(
+        category="laptops",
+        attributeNodes=[
+            AttributeNode("performance", weight=0.5, confidence=0.3),
+            AttributeNode("portability", weight=0.4, confidence=0.2),
+        ],
+        coldStartPrior="laptops_population_v0",
+    )  # no edges, no contextConditioners
+    # Required flat update fields must be populated for a frozen-schema credential.
+    graph.lastUpdated = "2026-05-10T14:22:00+00:00"
+    cred = PreferenceCredential(did, graph).sign(sk)
+    doc = cred.to_dict()
+    # The tidy serializer drops the empty edges array entirely.
+    assert "edges" not in doc["credentialSubject"]["preferenceGraph"]
+    validate(doc)  # must not raise
+    assert is_valid(doc)
+
+
 # ------------------------------------------------------------------ rejection cases
 def test_missing_required_graph_field_rejected():
     doc = _full_credential()
