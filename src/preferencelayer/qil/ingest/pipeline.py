@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from ..corpus import Sample
 from ..extract import ExtractedSignal, QILExtractor
+from ..quality_spans import QualityDimTagger
 from .connectors import Connector, RawDocument
 from .normalize import ProductRegistry
 
@@ -114,14 +115,23 @@ class PostgresSink(SignalSink):
         return written
 
 
-def _doc_to_sample(doc: RawDocument, product_id: str) -> Sample:
+def _doc_to_sample(
+    doc: RawDocument, product_id: str, tagger: QualityDimTagger | None = None
+) -> Sample:
     """Adapt a RawDocument to the Sample shape the QILExtractor consumes.
 
     Gold-label fields are unknown at ingestion time (we are *predicting* them),
-    so use_profile/signal_type are placeholders the extractor overwrites; the
-    structured failure_mode/quality_dim/signal_value default to neutral and are a
-    span-model's job in a fuller pipeline (see extract.py docstring).
+    so use_profile/signal_type are placeholders the extractor overwrites. The
+    structured failure_mode is still a fuller span-model's job; ``quality_dim``
+    and ``signal_value`` are populated by ``tagger`` (the heuristic span tagger,
+    ``quality_spans.QualityDimTagger``) when one is supplied, so non-failure
+    signals carry a dimension and the aggregator forms GP posteriors. Without a
+    tagger they default to neutral (``None`` / 0.5), preserving prior behavior.
     """
+    if tagger is not None:
+        quality_dim, signal_value = tagger.tag(doc.text)
+    else:
+        quality_dim, signal_value = None, 0.5
     return Sample(
         text=doc.text,
         category=doc.category,
@@ -129,8 +139,8 @@ def _doc_to_sample(doc: RawDocument, product_id: str) -> Sample:
         use_profile="light_use",      # placeholder; predicted by the extractor
         signal_type="performance",    # placeholder; predicted by the extractor
         failure_mode=None,
-        quality_dim=None,
-        signal_value=0.5,
+        quality_dim=quality_dim,
+        signal_value=signal_value,
         label_confidence=0.0,
     )
 
@@ -169,12 +179,17 @@ def run_daily(
     extractor: QILExtractor,
     sink: SignalSink,
     now: datetime | None = None,
+    quality_tagger: QualityDimTagger | None = None,
 ) -> IngestionStats:
     """Run one ingestion pass over all connectors. The cron entrypoint.
 
     Steps per document: politeness-gated fetch (inside the connector) ->
     resolve canonical product_id (drop if no confident match) -> extract
     use_profile/signal_type -> write to sink (dedup by content_hash).
+
+    ``quality_tagger`` (when supplied) populates each sample's ``quality_dim`` /
+    ``signal_value`` so non-failure signals form GP quality posteriors; without
+    it those fields stay neutral and only failure rates aggregate (prior behavior).
     """
     extracted_at = now or datetime.now(timezone.utc)
     stats = IngestionStats()
@@ -194,7 +209,7 @@ def run_daily(
             stats.matched += 1
 
     if pending:
-        samples = [_doc_to_sample(doc, pid) for doc, pid, _ in pending]
+        samples = [_doc_to_sample(doc, pid, quality_tagger) for doc, pid, _ in pending]
         signals = extractor.extract(samples)
         rows = [
             _to_row(doc, pid, model_norm, sig, extracted_at)
