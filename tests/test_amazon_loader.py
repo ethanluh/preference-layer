@@ -105,3 +105,13 @@ def test_collect_metas_is_lazy_no_extra_shards():
 def test_collect_metas_under_cap_returns_all():
     metas = _collect_metas([_shard(2), _shard(2, start=2)], max_items=100)
     assert len(metas) == 4
+
+
+def test_collect_metas_non_positive_cap_is_empty():
+    # A non-positive cap yields nothing, and short-circuits before any shard is read.
+    def gen():
+        yield _shard(5)
+        raise AssertionError("shard fetched despite non-positive cap")
+
+    assert _collect_metas(gen(), max_items=0) == {}
+    assert _collect_metas([_shard(5)], max_items=-1) == {}

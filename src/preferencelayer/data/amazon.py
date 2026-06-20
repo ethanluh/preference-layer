@@ -173,9 +173,11 @@ def _collect_metas(shard_records: Iterable[Iterable[dict]], max_items: int) -> d
     if necessary — rather than overshooting to a shard boundary. Because the cap short-
     circuits, a lazy ``shard_records`` generator never produces shards beyond the one that
     fills the cap (so no extra downloads). Split out from :func:`load_category` so it is
-    unit-testable offline.
+    unit-testable offline. A non-positive ``max_items`` yields an empty result.
     """
     metas: dict[str, dict] = {}
+    if max_items <= 0:
+        return metas
     for records in shard_records:
         for row in records:
             pid = row.get("parent_asin")
