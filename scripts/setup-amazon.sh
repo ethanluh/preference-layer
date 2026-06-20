@@ -14,8 +14,9 @@ source .venv/bin/activate
 
 python -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
 # Install the amazon extra (plus dev, so the documented pytest verification works on a
-# cold venv) only if its deps aren't importable yet.
-if ! python -c "import pandas, pyarrow, huggingface_hub" >/dev/null 2>&1; then
+# cold venv). Guard on the editable package too, so a venv that happens to have the deps
+# system-wide but no preferencelayer install still gets one.
+if ! python -c "import preferencelayer, pandas, pyarrow, huggingface_hub" >/dev/null 2>&1; then
   pip install --quiet -e ".[dev,amazon]"
 fi
 
