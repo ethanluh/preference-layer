@@ -1,0 +1,21 @@
+{
+  "reviews": [
+    {
+      "id": "nbc-001",
+      "title": "Lenovo ThinkPad X1 Carbon Gen 12 Review",
+      "verdict": "Strong sustained performance for professional workloads, but the chassis runs warm and throttles under prolonged compute.",
+      "url": "https://www.notebookcheck.net/nbc-001",
+      "rating": 87
+    },
+    {
+      "id": "nbc-002",
+      "title": "Dell XPS 15 9530 Review",
+      "summary": "Excellent display and build quality; battery life suffers noticeably under heavy sustained load.",
+      "url": "https://www.notebookcheck.net/nbc-002"
+    },
+    {
+      "title": "no id review, should be skipped",
+      "verdict": "dropped"
+    }
+  ]
+}

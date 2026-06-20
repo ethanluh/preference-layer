@@ -126,16 +126,19 @@ WS-C (part.): ──────────────────────
 
 ## Work Stream B — QIL v0.1 (two categories) — highest risk
 
-> **In-sandbox prod-hardening landed (issue #31).** The parts of WS-B that don't
-> need external resources are done and tested: the connector network boundary is
-> a single injectable `fetch` callable with a real, tested Reddit parser
-> (`qil/ingest/connectors.py`); the production `PostgresSink` / `PostgresPosteriorSink`
-> are covered by a fake-DB-API test (no `# pragma: no cover`); and the nightly
-> refit now has a scheduled entry point, `qil-refit` (cron/systemd-timer-friendly,
-> with an optional dependency-free `--loop`; `qil/cli.py`). What remains is
-> **external-resource-gated**: live API keys/HTTP (B1 fetch), a real annotated
-> corpus + transformer fine-tune (B2), and a live Postgres + scraped data for
-> coverage (B4).
+> **In-sandbox prod-hardening landed (issues #31, #33).** The parts of WS-B that
+> don't need external resources are done and tested: the connector network
+> boundary is a single injectable `fetch` callable with real, tested parsers for
+> **all three** sources — Reddit (listing JSON), iFixit (guides JSON), and
+> Notebookcheck (review records) (`qil/ingest/connectors.py`); the production
+> `PostgresSink` / `PostgresPosteriorSink` are covered by a fake-DB-API test (no
+> `# pragma: no cover`); the nightly refit has a scheduled entry point, `qil-refit`
+> (cron/systemd-timer-friendly, with an optional dependency-free `--loop`); and
+> `qil-ingest` runs the daily pipeline over fixture sources with an optional
+> `--refit` that chains straight into the posterior refit (`qil/cli.py`). What
+> remains is **external-resource-gated**: live API keys/HTTP (B1 fetch), a real
+> annotated corpus + transformer fine-tune **and** the quality-dim span model that
+> populates `quality_dim` (B2), and a live Postgres + scraped data for coverage (B4).
 
 ### B1. Real ingestion pipeline (Months 4–5)
 - **Do:** productionize ingestion from Reddit (official API, rate-limited), iFixit
@@ -143,10 +146,12 @@ WS-C (part.): ──────────────────────
   land records in the `product_signal` PostgreSQL schema.
 - **Done when:** the pipeline runs unattended for a week and lands deduplicated,
   normalized signals for laptops + keyboards.
-- **Hardened:** pipeline plumbing, normalization/dedup, the `PostgresSink`, and the
-  connector seam are implemented and tested; the **only** unplugged piece is the
-  network call (inject a `fetch` callable wrapping PRAW/HTTP). Live fetch + a live
-  Postgres remain external-resource-gated.
+- **Hardened:** pipeline plumbing, normalization/dedup, the `PostgresSink`, the
+  connector seam, and parsers for all three sources (Reddit/iFixit/Notebookcheck)
+  are implemented and tested; `qil-ingest [--fixtures DIR] [--refit]` runs the job
+  (and chains into the refit) offline. The **only** unplugged piece is the network
+  call (inject a `fetch` callable wrapping PRAW/HTTP). Live fetch + a live Postgres
+  remain external-resource-gated.
 
 ### B2. Precision on **real** text (Months 4–5) — the gate-behind-the-gate
 - **Do:** annotate ~300 real samples (2 annotators, adjudicate); fine-tune a small
