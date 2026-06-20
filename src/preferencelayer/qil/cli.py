@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,8 +40,11 @@ from .ingest import (
     IngestionStats,
     NotebookcheckConnector,
     ProductRegistry,
+    RateLimiter,
     ProductSignalRow,
     RedditConnector,
+    make_http_fetch,
+    make_reddit_fetch,
     run_daily,
 )
 from .refit import InMemoryPosteriorSink, PosteriorSink, run_nightly_refit
@@ -185,19 +189,70 @@ def _connectors_from_dir(fixtures_dir: Path, category: str) -> list:
     return connectors
 
 
+# Default live sources per category. Operators can extend these; the point is a
+# working out-of-the-box --live wiring, not an exhaustive source list.
+_LIVE_SUBREDDITS = {
+    "laptops": ("laptops", "thinkpad", "Dell"),
+    "keyboards": ("MechanicalKeyboards",),
+}
+_LIVE_IFIXIT_URLS = {
+    "laptops": ("https://www.ifixit.com/api/2.0/guides?category=Laptop",),
+    "keyboards": ("https://www.ifixit.com/api/2.0/guides?category=Keyboard",),
+}
+
+
+def build_live_connectors(category: str, *, rate: float = 1.0) -> list:
+    """Assemble live Reddit + iFixit connectors from environment credentials.
+
+    Reads ``REDDIT_CLIENT_ID`` / ``REDDIT_CLIENT_SECRET`` / ``REDDIT_USER_AGENT``;
+    injects the real ``fetch`` callables (``live_fetch``) and a token-bucket
+    ``RateLimiter`` into the existing connectors. Raises ``SystemExit`` with a
+    clear message when credentials are absent.
+
+    Notebookcheck is intentionally omitted: it has no JSON API and needs a
+    site-specific HTML->records parser (out of in-sandbox scope); inject one via
+    ``make_http_fetch(parser=...)`` + ``NotebookcheckConnector`` to add it.
+    """
+    user_agent = os.environ.get("REDDIT_USER_AGENT")
+    client_id = os.environ.get("REDDIT_CLIENT_ID")
+    client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
+    if not (user_agent and client_id and client_secret):
+        raise SystemExit(
+            "qil-ingest --live: missing Reddit credentials. Set REDDIT_CLIENT_ID, "
+            "REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT in the environment."
+        )
+
+    connectors: list = []
+    reddit_fetch = make_reddit_fetch(client_id, client_secret, user_agent)
+    connectors.append(RedditConnector(
+        category, list(_LIVE_SUBREDDITS.get(category, ())),
+        fetch=reddit_fetch, rate_limiter=RateLimiter(rate=rate),
+    ))
+    ifixit_fetch = make_http_fetch(user_agent=user_agent, crawl_delay=1.0)
+    connectors.append(IFixitConnector(
+        category, list(_LIVE_IFIXIT_URLS.get(category, ())),
+        fetch=ifixit_fetch, rate_limiter=RateLimiter(rate=rate),
+    ))
+    return connectors
+
+
 def ingest_main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="qil-ingest",
         description="Run the QIL daily ingestion over fixture sources (Work Stream B1).",
     )
-    ap.add_argument("--fixtures", type=Path, required=True,
-                    help="directory of *.json source fixtures (one connector per file)")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--fixtures", type=Path,
+                     help="directory of *.json source fixtures (one connector per file)")
+    src.add_argument("--live", action="store_true",
+                     help="ingest from live sources using credentials in the environment "
+                          "(REDDIT_CLIENT_ID/SECRET/USER_AGENT); see build_live_connectors")
     ap.add_argument("--category", default="laptops", help="product category (default: laptops)")
     ap.add_argument("--refit", action="store_true",
                     help="after ingest, run the posterior refit end-to-end and report counts")
     args = ap.parse_args(argv)
 
-    if not args.fixtures.is_dir():
+    if args.fixtures is not None and not args.fixtures.is_dir():
         raise SystemExit(f"qil-ingest: --fixtures {args.fixtures} is not a directory")
 
     # Train the extractor on the controlled Phase 0 corpus (stand-in for the
@@ -205,7 +260,10 @@ def ingest_main(argv: list[str] | None = None) -> int:
     corpus = generate()
     extractor = QILExtractor().fit(corpus.train)
 
-    connectors = _connectors_from_dir(args.fixtures, args.category)
+    if args.live:
+        connectors = build_live_connectors(args.category)
+    else:
+        connectors = _connectors_from_dir(args.fixtures, args.category)
     sink = InMemorySink()
     stats, written = run_ingest(connectors, build_demo_registry(), extractor, sink, refit=args.refit)
 

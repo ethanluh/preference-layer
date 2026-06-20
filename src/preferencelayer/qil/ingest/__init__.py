@@ -22,6 +22,7 @@ from .connectors import (
     RawDocument,
     RedditConnector,
 )
+from .live_fetch import make_http_fetch, make_reddit_fetch
 from .normalize import CanonicalProduct, ProductRegistry, normalize_model_string
 from .pipeline import (
     IngestionStats,
@@ -53,6 +54,8 @@ __all__ = [
     "normalize_model_string",
     "RateLimiter",
     "RobotsPolicy",
+    "make_reddit_fetch",
+    "make_http_fetch",
     "run_daily",
     "IngestionStats",
     "SignalSink",
