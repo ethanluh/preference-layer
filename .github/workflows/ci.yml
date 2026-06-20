@@ -23,3 +23,11 @@ jobs:
           pip install -e ".[dev]"
       - name: Run test suite (includes the Phase 0 go/no-go gate)
         run: python -m pytest -q
+      - name: Validate PTP credential fixtures against the frozen v0.1 schema
+        run: |
+          python -m preferencelayer.ptp.schema_validate tests/fixtures/credential_valid.json
+          # The invalid fixture MUST be rejected (exit 1); invert so CI passes only on rejection.
+          if python -m preferencelayer.ptp.schema_validate tests/fixtures/credential_invalid.json; then
+            echo "ERROR: invalid credential fixture was accepted by the validator" >&2
+            exit 1
+          fi
