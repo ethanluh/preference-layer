@@ -145,6 +145,57 @@ class _LiveConnector(Connector):
     def _parse(self, payload: object, url: str) -> Iterator[RawDocument]:  # pragma: no cover
         raise NotImplementedError
 
+    # -- shared parsing helpers (used by the structured-record connectors) -----
+    @staticmethod
+    def _records(payload: object, *container_keys: str) -> list:
+        """Unwrap a payload that is either a list or ``{container_key: [...]}``."""
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, dict):
+            for key in container_keys:
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return value
+        raise ValueError(
+            f"{type(self).__name__ if isinstance(payload, type) else 'connector'}: "
+            f"expected a list or a dict with one of {container_keys!r}"
+        )
+
+    def _emit(
+        self,
+        records: list,
+        *,
+        id_key: str,
+        text_keys: tuple[str, ...],
+        url_key: str | None = None,
+        score_key: str | None = None,
+        page_url: str | None = None,
+    ) -> Iterator[RawDocument]:
+        """Map structured source records to non-identifying RawDocuments.
+
+        Reads only the id, the text field(s), an optional canonical url, and an
+        optional score -- never author/username fields, so no user identifier
+        reaches a RawDocument (architecture.md "QIL privacy").
+        """
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            local_id = rec.get(id_key)
+            if not local_id:
+                continue
+            text = "\n".join(str(rec[k]) for k in text_keys if rec.get(k)).strip()
+            if not text:
+                continue
+            src_url = rec.get(url_key) if url_key else None
+            yield RawDocument(
+                source_type=self.source_type,
+                source_local_id=str(local_id),
+                category=self.category,
+                text=text,
+                source_url=src_url or page_url,
+                upvote_count=int(rec.get(score_key, 0) or 0) if score_key else 0,
+            )
+
 
 class RedditConnector(_LiveConnector):
     """Reddit (official API, rate-limited).
@@ -198,7 +249,12 @@ class RedditConnector(_LiveConnector):
 
 
 class IFixitConnector(_LiveConnector):
-    """iFixit (polite crawl, robots.txt). SCAFFOLD -- see _fetch_pages."""
+    """iFixit (polite crawl, robots.txt).
+
+    The network call is the injected ``fetch`` (e.g. ``requests.get`` against the
+    iFixit API 2.0 honoring ``self.robots.crawl_delay``); ``_parse`` handles the
+    guides JSON shape (a list, or ``{"guides"|"results": [...]}``) and is tested.
+    """
 
     source_type = "ifixit"
 
@@ -209,9 +265,22 @@ class IFixitConnector(_LiveConnector):
     def _page_urls(self) -> list[str]:
         return list(self.start_urls)
 
+    def _parse(self, payload: object, url: str) -> Iterator[RawDocument]:
+        yield from self._emit(
+            self._records(payload, "guides", "results"),
+            id_key="guideid", text_keys=("title", "introduction", "conclusion"),
+            url_key="url", score_key="favorites", page_url=url,
+        )
+
 
 class NotebookcheckConnector(_LiveConnector):
-    """Notebookcheck (structured scrape). SCAFFOLD -- see _fetch_pages."""
+    """Notebookcheck (structured scrape).
+
+    Notebookcheck has no public JSON API, so the HTML→records extraction lives in
+    the injected ``fetch`` (which may use any parser it likes); ``_parse``
+    normalizes the resulting review records (a list, or
+    ``{"reviews"|"results": [...]}``) into RawDocuments and is tested.
+    """
 
     source_type = "notebookcheck"
 
@@ -221,6 +290,13 @@ class NotebookcheckConnector(_LiveConnector):
 
     def _page_urls(self) -> list[str]:
         return list(self.start_urls)
+
+    def _parse(self, payload: object, url: str) -> Iterator[RawDocument]:
+        yield from self._emit(
+            self._records(payload, "reviews", "results"),
+            id_key="id", text_keys=("title", "verdict", "summary"),
+            url_key="url", page_url=url,
+        )
 
 
 @dataclass

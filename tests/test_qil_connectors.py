@@ -14,12 +14,24 @@ from pathlib import Path
 
 import pytest
 
-from preferencelayer.qil.ingest.connectors import RawDocument, RedditConnector
+from preferencelayer.qil.ingest.connectors import (
+    IFixitConnector,
+    NotebookcheckConnector,
+    RawDocument,
+    RedditConnector,
+)
 
-FIXTURE = Path(__file__).parent / "fixtures" / "ingest" / "reddit_listing.json"
+FIXTURES = Path(__file__).parent / "fixtures" / "ingest"
+FIXTURE = FIXTURES / "reddit_listing.json"
 
 # Identifier fields the listing payload carries that must NEVER reach a RawDocument.
 _IDENTIFIER_FIELDS = ("author", "author_fullname", "username", "user", "user_id")
+
+
+def _fetch_from(path: Path):
+    def _fetch(_url: str):
+        return json.loads(path.read_text())
+    return _fetch
 
 
 def _fake_fetch(_url: str) -> dict:
@@ -61,3 +73,36 @@ def test_uninjected_connector_raises_clear_scaffold_error():
     conn = RedditConnector("laptops", ["laptops"])  # no fetch injected
     with pytest.raises(NotImplementedError, match="network fetch not configured"):
         list(conn.documents())
+
+
+@pytest.mark.parametrize("cls,kwargs,fixture,source_type,expected_ids", [
+    (IFixitConnector, {"start_urls": ["https://www.ifixit.com/api/2.0/guides"]},
+     "ifixit_guides.json", "ifixit", {"12345", "12346"}),
+    (NotebookcheckConnector, {"start_urls": ["https://www.notebookcheck.net/laptops"]},
+     "notebookcheck_reviews.json", "notebookcheck", {"nbc-001", "nbc-002"}),
+])
+def test_structured_connectors_parse_clean_documents(cls, kwargs, fixture, source_type, expected_ids):
+    conn = cls("laptops", fetch=_fetch_from(FIXTURES / fixture), **kwargs)
+    docs = list(conn.documents())
+
+    # Records without an id or without text are dropped.
+    assert {d.source_local_id for d in docs} == expected_ids
+    for d in docs:
+        assert isinstance(d, RawDocument)
+        assert d.source_type == source_type
+        assert d.category == "laptops"
+        assert d.text                      # title + body joined, non-empty
+        assert d.source_url                # per-record url present in fixtures
+        assert d.content_hash
+        # No user-identifier field smuggled onto the document.
+        assert not (_IDENTIFIER_FIELDS_SET & set(d.__dict__))
+
+
+_IDENTIFIER_FIELDS_SET = set(_IDENTIFIER_FIELDS)
+
+
+def test_ifixit_favorites_map_to_upvote_count():
+    conn = IFixitConnector("laptops", ["u"], fetch=_fetch_from(FIXTURES / "ifixit_guides.json"))
+    by_id = {d.source_local_id: d for d in conn.documents()}
+    assert by_id["12345"].upvote_count == 8  # 'favorites' -> upvote_count
+    assert by_id["12346"].upvote_count == 3
