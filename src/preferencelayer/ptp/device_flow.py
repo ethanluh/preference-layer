@@ -115,7 +115,16 @@ class DeviceFlowAuthority:
 
     # ----------------------------------------------------------- step 1: request
     def request_device_code(self, client_id: str, scope: list[str] | None = None) -> DeviceCodeResponse:
-        scope = scope or ["*"]
+        # Security: an omitted/empty scope MUST NOT silently widen to all-categories
+        # (the store treats "*" as every category). The approver only ever sees a
+        # user_code, so an implicit wildcard would grant far more than intended.
+        # Require the requester to name the categories explicitly.
+        if not scope or any(not s for s in scope):
+            raise DeviceFlowError(
+                "a non-empty scope (list of categories) is required; "
+                "wildcard/all-category scope cannot be requested implicitly"
+            )
+        scope = list(scope)
         device_code = "dev_" + secrets.token_urlsafe(32)
         user_code = _gen_user_code()
         while user_code in self._by_user:  # avoid collision
@@ -140,6 +149,14 @@ class DeviceFlowAuthority:
         )
 
     # ------------------------------------------------ step 2: user-side decision
+    def pending_scope(self, user_code: str) -> list[str]:
+        """Return the categories a pending request is asking for.
+
+        The consent step should surface this to the approver so the human sees
+        exactly which categories they are about to grant (not just a user_code).
+        """
+        return list(self._lookup_user(user_code).scope)
+
     def approve(self, user_code: str) -> None:
         """Owner approves a pending request, minting a scoped store token."""
         pending = self._lookup_user(user_code)
