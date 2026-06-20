@@ -25,6 +25,7 @@ from .harness import (
     load_real_corpus,
     measure,
 )
+from .http_api import build_app
 from .mcp_server import QIL_TOOLS, QILToolHandler
 from .query import QualityService
 from .refit import (
@@ -51,6 +52,7 @@ __all__ = [
     "QualityService",
     "QILToolHandler",
     "QIL_TOOLS",
+    "build_app",
     "evaluate",
     "ClassificationReport",
     "GATE_PRECISION",
