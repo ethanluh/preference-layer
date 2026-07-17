@@ -78,5 +78,3 @@ If you write experiment code, document dataset version, hyperparameters, and eva
 - Protocol/schema/API changes require a prior GitHub issue thread before a PR (per `CONTRIBUTING.MD`). Label issues: `research`, `protocol`, `infra`, `data`.
 - **Branch naming:** name branches `<type>/<short-description>`, where `<type>` is one of `docs`, `feature`, `bug`, `fix`, etc., followed by a slash and a brief kebab-case description (e.g. `feature/new-sign-in`, `docs/update-protocol-spec`, `fix/credential-resign-bug`).
 - **Merging:** PRs are merged with GitHub's **Rebase and merge** (not squash, not a merge commit), to keep `main` a linear history of the original commits. See `CONTRIBUTING.MD`.
-</content>
-</invoke>
