@@ -43,7 +43,7 @@ Portable preference infrastructure for the open agent web. It exists to break th
 - **PTP (Preference Transport Protocol):** a user-owned, cryptographically signed preference credential plus the REST/MCP protocol agents use to read and update it. Privacy-preserving and platform-agnostic.
 - **QIL (Quality Intelligence Layer):** a server-side database of *use-profile-conditioned* product quality signals (failure rates, longitudinal performance, counterfactual comparisons), exposed as an agent-queryable API with Bayesian posteriors and confidence intervals.
 
-The key architectural insight: PTP and QIL are decoupled. PTP is stateless server-side with a **client-side, user-controlled credential store**; QIL is proprietary and server-side. An agent calls both as MCP tools and blends the results with a learned weight `α` (lean on quality when the credential is sparse/low-confidence, lean on preference when it is rich). This blending is defined in `docs/architecture.md` ("Combined Scoring").
+The key architectural insight: PTP and QIL are decoupled. PTP is stateless server-side with a **client-side, user-controlled credential store**; QIL is open-source and server-side. An agent calls both as MCP tools and blends the results with a learned weight `α` (lean on quality when the credential is sparse/low-confidence, lean on preference when it is rich). This blending is defined in `docs/architecture.md` ("Combined Scoring").
 
 ## Architecture you must read across files to understand
 

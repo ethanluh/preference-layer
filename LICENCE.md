@@ -14,6 +14,4 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Scope
 
-This license covers the protocol specification, reference implementation code, and tooling in this repository.
-
-The Quality Intelligence Layer (QIL) database, trained models, and commercial API are proprietary and are not covered by this license.
+This license covers everything in this repository, including the protocol specification, reference implementation code, tooling, and the Quality Intelligence Layer (QIL) code, aggregation logic, and API.

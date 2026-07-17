@@ -349,7 +349,7 @@ PTP becomes the default portable preference infrastructure for the MCP ecosystem
 PTP v1.0 submitted to a recognized standards body. Goal: referenced in at least one major agent framework (LangChain, AutoGPT, or a major platform SDK) as the default preference integration path. This requires active engagement with framework maintainers — assign a dedicated developer relations role.
 
 **Open-source strategy:**
-Open-source the preference graph training code, the credential schema validator, the reference credential store, and the MCP server implementation. Keep proprietary: the QIL database, the Bayesian aggregation models, the cloud sync infrastructure, and the API serving layer.
+The entire codebase is open-source: the preference graph training code, the credential schema validator, the reference credential store, the MCP server implementation, the QIL database and Bayesian aggregation models, the cloud sync infrastructure, and the API serving layer.
 
 The open-source core lowers friction for agent developers and makes the protocol harder to fork away from (network effects accrue to the protocol, not just the implementation).
 

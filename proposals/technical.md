@@ -69,7 +69,7 @@ PTP is designed to be MCP-native. A PTP MCP server can be instantiated against a
 
 ### 2.3 The Quality Intelligence Layer (QIL)
 
-The QIL is a continuously maintained, proprietary knowledge base of use-profile-conditioned product quality signals.
+The QIL is a continuously maintained, open-source knowledge base of use-profile-conditioned product quality signals.
 
 **Ingestion pipeline.** Automated extraction from Reddit (r/laptops, r/MechanicalKeyboards, r/homelab, category-specific subreddits), iFixit repair databases, Notebookcheck and similar review corpora, manufacturer service bulletins, and return data sourced via retailer partnerships. An NLP pipeline performs entity recognition (product model, failure mode, use context) and use-profile classification.
 
