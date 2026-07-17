@@ -23,7 +23,7 @@ PreferenceLayer has two independently deployable components that combine at quer
            ▼                               ▼
 ┌──────────────────────┐   ┌─────────────────────────────────┐
 │  Credential Store    │   │       QIL Database              │
-│  (user-controlled,   │   │  (proprietary, server-side,     │
+│  (user-controlled,   │   │  (open-source, server-side,     │
 │   on-device/cloud)   │   │   continuously updated)         │
 └──────────────────────┘   └─────────────────────────────────┘
 ```
