@@ -31,6 +31,8 @@ from .pipeline import (
     ProductSignalRow,
     SignalSink,
     run_daily,
+    signal_rows_from_json,
+    signal_rows_to_json,
 )
 from .politeness import RateLimiter, RobotsPolicy
 
@@ -63,6 +65,8 @@ __all__ = [
     "InMemorySink",
     "PostgresSink",
     "ProductSignalRow",
+    "signal_rows_to_json",
+    "signal_rows_from_json",
     "schema_sql",
     "SCHEMA_SQL_PATH",
 ]

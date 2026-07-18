@@ -18,9 +18,10 @@ run). This honors the .gitignore / "never commit raw scraped data" rule.
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from ..corpus import Sample
@@ -76,6 +77,32 @@ class InMemorySink(SignalSink):
             self.rows.append(row)
             written += 1
         return written
+
+
+def signal_rows_to_json(rows: Iterable[ProductSignalRow]) -> str:
+    """Serialize product_signal rows to JSON -- a stopgap store before a real DB.
+
+    Used to persist accumulated rows across separate ``qil-ingest`` invocations
+    (e.g. one GitHub Actions run per day) so evidence builds up over time instead
+    of resetting with each run's in-memory sink. Not a replacement for
+    :class:`PostgresSink`; see docs/whats-missing.md B4.
+    """
+    def _dump(row: ProductSignalRow) -> dict:
+        d = asdict(row)
+        d["extracted_at"] = row.extracted_at.isoformat()
+        return d
+
+    return json.dumps([_dump(r) for r in rows])
+
+
+def signal_rows_from_json(text: str) -> list[ProductSignalRow]:
+    """Inverse of :func:`signal_rows_to_json`."""
+    rows = []
+    for d in json.loads(text):
+        d = dict(d)
+        d["extracted_at"] = datetime.fromisoformat(d["extracted_at"])
+        rows.append(ProductSignalRow(**d))
+    return rows
 
 
 class PostgresSink(SignalSink):

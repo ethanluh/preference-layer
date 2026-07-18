@@ -14,11 +14,12 @@ age" note.
 
 from __future__ import annotations
 
+import json
 import math
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from .aggregate import QualityAggregator
@@ -102,6 +103,21 @@ class PostgresPosteriorSink(PosteriorSink):
                 n += 1
         self.connection.commit()
         return n
+
+
+def posterior_rows_to_json(rows: Iterable[QualityPosteriorRow]) -> str:
+    """Serialize quality_posterior rows to JSON -- a stopgap store before a real DB.
+
+    Posteriors are recomputed fresh from the full accumulated signal set on every
+    refit, so unlike ``signal_rows_to_json`` there is no matching ``_from_json``
+    loader -- this is a write-only snapshot for inspection/artifact upload.
+    """
+    def _dump(row: QualityPosteriorRow) -> dict:
+        d = asdict(row)
+        d["last_refit"] = row.last_refit.isoformat()
+        return d
+
+    return json.dumps([_dump(r) for r in rows])
 
 
 def _freshness(newest_age_days: float) -> float:
