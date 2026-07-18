@@ -8,7 +8,11 @@ unexercised line; everything around it is covered here.
 import pytest
 
 from preferencelayer.qil.ingest.connectors import IFixitConnector, RedditConnector
-from preferencelayer.qil.ingest.live_fetch import make_http_fetch, make_reddit_fetch
+from preferencelayer.qil.ingest.live_fetch import (
+    make_arctic_shift_fetch,
+    make_http_fetch,
+    make_reddit_fetch,
+)
 
 
 class _FakeResponse:
@@ -100,6 +104,85 @@ def test_reddit_fetch_feeds_the_connector_parser():
 def test_reddit_fetch_requires_credentials():
     with pytest.raises(ValueError):
         make_reddit_fetch("", "secret", "ua")
+
+
+# --- Arctic Shift (Reddit fallback, no OAuth) --------------------------------
+
+_ARCTIC_SHIFT_RESULTS = [
+    {"id": "abc", "title": "X1 Carbon runs hot", "selftext": "throttles under load",
+     "score": 12, "subreddit": "thinkpad"},
+]
+
+
+def test_arctic_shift_fetch_needs_no_oauth_and_hits_search_endpoint():
+    http = _FakeTransport(get_body={"data": _ARCTIC_SHIFT_RESULTS})
+    fetch = make_arctic_shift_fetch("pref-bot/0.1", http=http)
+    payload = fetch("https://oauth.reddit.com/r/thinkpad/new")
+
+    assert http.posts == []  # no OAuth handshake at all
+    assert len(http.gets) == 1
+    get = http.gets[0]
+    assert get["headers"]["User-Agent"] == "pref-bot/0.1"
+    assert "arctic-shift.photon-reddit.com/api/posts/search" in get["url"]
+    assert "subreddit=thinkpad" in get["url"]
+    assert payload == {"data": {"children": [{"data": _ARCTIC_SHIFT_RESULTS[0]}]}}
+
+
+def test_arctic_shift_fetch_accepts_bare_list_response():
+    http = _FakeTransport(get_body=_ARCTIC_SHIFT_RESULTS)
+    fetch = make_arctic_shift_fetch("ua", http=http)
+    payload = fetch("https://oauth.reddit.com/r/thinkpad/new")
+    assert payload == {"data": {"children": [{"data": _ARCTIC_SHIFT_RESULTS[0]}]}}
+
+
+def test_arctic_shift_fetch_feeds_the_connector_parser():
+    http = _FakeTransport(get_body={"data": _ARCTIC_SHIFT_RESULTS})
+    fetch = make_arctic_shift_fetch("ua", http=http)
+    conn = RedditConnector("laptops", subreddits=["thinkpad"], fetch=fetch)
+    docs = list(conn.documents())
+    assert len(docs) == 1
+    assert docs[0].source_type == "reddit"
+    assert "throttles" in docs[0].text
+    assert docs[0].upvote_count == 12
+
+
+def test_arctic_shift_fetch_requires_user_agent():
+    with pytest.raises(ValueError):
+        make_arctic_shift_fetch("")
+
+
+def test_arctic_shift_fetch_rejects_url_without_subreddit():
+    fetch = make_arctic_shift_fetch("ua", http=_FakeTransport())
+    with pytest.raises(ValueError):
+        fetch("https://oauth.reddit.com/nope")
+
+
+def test_arctic_shift_fetch_omits_after_param_with_no_watermark():
+    http = _FakeTransport(get_body={"data": _ARCTIC_SHIFT_RESULTS})
+    fetch = make_arctic_shift_fetch("ua", http=http, after_utc=lambda _sub: None)
+    fetch("https://oauth.reddit.com/r/thinkpad/new")
+    assert "after=" not in http.gets[0]["url"]
+
+
+def test_arctic_shift_fetch_adds_after_param_from_watermark():
+    http = _FakeTransport(get_body={"data": _ARCTIC_SHIFT_RESULTS})
+    fetch = make_arctic_shift_fetch("ua", http=http, after_utc=lambda _sub: 1700000000)
+    fetch("https://oauth.reddit.com/r/thinkpad/new")
+    assert "after=1700000000" in http.gets[0]["url"]
+
+
+def test_arctic_shift_fetch_reports_records_via_on_records():
+    http = _FakeTransport(get_body={"data": _ARCTIC_SHIFT_RESULTS})
+    seen = {}
+
+    def on_records(subreddit, records):
+        seen["subreddit"] = subreddit
+        seen["records"] = records
+
+    fetch = make_arctic_shift_fetch("ua", http=http, on_records=on_records)
+    fetch("https://oauth.reddit.com/r/thinkpad/new")
+    assert seen["subreddit"] == "thinkpad"
+    assert seen["records"] == _ARCTIC_SHIFT_RESULTS
 
 
 # --- HTTP (iFixit / Notebookcheck) ------------------------------------------
