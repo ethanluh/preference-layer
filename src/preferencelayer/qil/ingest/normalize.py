@@ -76,6 +76,14 @@ class ProductRegistry:
         present in the mention -- rather than symmetric Jaccard, because a free-
         text post is far longer than a model name and symmetric overlap would be
         diluted to near-zero by the post's other words.
+
+        A short (2-token) signature also requires *both* tokens present, not just
+        the ratio -- otherwise a 2-token alias like "xps 15" clears the 0.5
+        threshold on the generic token "15" alone (e.g. any post mentioning a
+        15" screen size), with zero evidence of the distinguishing token ("xps").
+        Signatures of 3+ tokens are already protected by the ratio (matching a
+        bare minority of tokens can't clear 0.5), so this only tightens the
+        specific case a ratio-only check leaves open.
         """
         mention_sig = _signature(mention)
         if not mention_sig:
@@ -84,14 +92,11 @@ class ProductRegistry:
         for prod in self.products:
             if category is not None and prod.category != category:
                 continue
-            score = max(_containment(sig, mention_sig) for sig in prod.signatures())
-            if score >= self.threshold and (best is None or score > best[1]):
-                best = (prod, score)
+            for sig in prod.signatures():
+                overlap = len(sig & mention_sig)
+                if not sig or overlap < min(2, len(sig)):
+                    continue
+                score = overlap / len(sig)
+                if score >= self.threshold and (best is None or score > best[1]):
+                    best = (prod, score)
         return best
-
-
-def _containment(canonical: frozenset[str], mention: frozenset[str]) -> float:
-    """Fraction of the canonical model's tokens found in the mention, in [0, 1]."""
-    if not canonical:
-        return 0.0
-    return len(canonical & mention) / len(canonical)
