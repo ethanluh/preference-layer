@@ -113,6 +113,12 @@ def build_demo_registry() -> ProductRegistry:
     ).add(
         CanonicalProduct("dell-xps-15-9530", "laptops", "Dell XPS 15 9530",
                          aliases=("dell xps 15 9530", "xps 15 9530", "xps 15"))
+    ).add(
+        CanonicalProduct("glorious-gmmk-3-pro", "keyboards", "Glorious GMMK 3 Pro",
+                         aliases=("gmmk 3 pro", "gmmk3 pro", "gmmk 3", "gmmk3"))
+    ).add(
+        CanonicalProduct("keychron-q1-pro", "keyboards", "Keychron Q1 Pro",
+                         aliases=("keychron q1", "keychron q1 pro", "q1 pro"))
     )
 
 

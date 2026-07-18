@@ -41,12 +41,28 @@ def _reddit_connector():
     return FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
 
 
+def _reddit_keyboards_connector():
+    return FixtureConnector("keyboards", FIXTURES / "reddit_keyboards.json", source_type="reddit")
+
+
 def test_run_ingest_writes_rows_without_refit():
     sink = InMemorySink()
     stats, written = run_ingest([_reddit_connector()], build_demo_registry(), _extractor(), sink)
     assert stats.written > 0
     assert len(sink.rows) == stats.written
     assert written == 0  # refit not requested
+
+
+def test_run_ingest_matches_keyboard_models():
+    # build_demo_registry only resolves keyboard mentions once GMMK 3 Pro /
+    # Keychron Q1 Pro are registered -- guards against the registry regressing
+    # to laptop-only coverage.
+    sink = InMemorySink()
+    stats, _ = run_ingest([_reddit_keyboards_connector()], build_demo_registry(), _extractor(), sink)
+    assert stats.written > 0
+    product_ids = {r.product_id for r in sink.rows}
+    assert "glorious-gmmk-3-pro" in product_ids
+    assert "keychron-q1-pro" in product_ids
 
 
 def test_row_to_signal_maps_fields():
