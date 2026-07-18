@@ -16,6 +16,8 @@ from preferencelayer.qil.ingest import (
     normalize_model_string,
     run_daily,
     schema_sql,
+    signal_rows_from_json,
+    signal_rows_to_json,
 )
 from preferencelayer.qil.ingest.connectors import RedditConnector, _assert_no_user_identifiers
 
@@ -209,6 +211,33 @@ def test_tagged_signals_form_gp_posteriors():
     ]
     agg = QualityAggregator().fit(signals)
     assert len(agg.quality) > 0  # was 0 before the tagger populated quality_dim
+
+
+# --- JSON persistence (stopgap before a real DB; see docs/whats-missing.md B4) --
+
+def test_signal_rows_json_round_trip_preserves_fields():
+    conn = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    sink = InMemorySink()
+    run_daily([conn], _registry(), _extractor(), sink)
+    assert len(sink.rows) == 2  # sanity: fixture has two matched rows
+
+    restored = signal_rows_from_json(signal_rows_to_json(sink.rows))
+    assert restored == sink.rows
+
+
+def test_signal_rows_from_json_rows_dedup_like_fresh_rows():
+    # Rows reloaded via write() must key into InMemorySink's dedup set the same
+    # way as freshly-ingested rows, so a preloaded row blocks a duplicate refetch.
+    conn = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    sink = InMemorySink()
+    run_daily([conn], _registry(), _extractor(), sink)
+
+    reloaded_sink = InMemorySink()
+    reloaded_sink.write(signal_rows_from_json(signal_rows_to_json(sink.rows)))
+    again = FixtureConnector("laptops", FIXTURES / "reddit_laptops.json", source_type="reddit")
+    stats = run_daily([again], _registry(), _extractor(), reloaded_sink)
+    assert stats.written == 0
+    assert len(reloaded_sink.rows) == 2
 
 
 def test_schema_sql_defines_both_tables_with_no_user_id():

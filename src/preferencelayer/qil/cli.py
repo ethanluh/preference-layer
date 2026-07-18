@@ -47,6 +47,8 @@ from .ingest import (
     make_http_fetch,
     make_reddit_fetch,
     run_daily,
+    signal_rows_from_json,
+    signal_rows_to_json,
 )
 from .harness import (
     TfidfBaselineClassifier,
@@ -55,7 +57,12 @@ from .harness import (
     load_real_corpus,
     measure,
 )
-from .refit import InMemoryPosteriorSink, PosteriorSink, run_nightly_refit
+from .refit import (
+    InMemoryPosteriorSink,
+    PosteriorSink,
+    posterior_rows_to_json,
+    run_nightly_refit,
+)
 
 _B2_BANNER = {
     "pass": ">= 70% -> PROCEED to coverage (B4).",
@@ -335,6 +342,15 @@ def ingest_main(argv: list[str] | None = None) -> int:
     ap.add_argument("--category", default="laptops", help="product category (default: laptops)")
     ap.add_argument("--refit", action="store_true",
                     help="after ingest, run the posterior refit end-to-end and report counts")
+    ap.add_argument("--signal-store", type=Path, default=None,
+                    help="JSON file of accumulated product_signal rows: loaded before the run "
+                         "and rewritten after, so evidence builds up across separate "
+                         "invocations instead of resetting each run. A stopgap before a real "
+                         "DB (see docs/whats-missing.md B4) -- not a replacement for it.")
+    ap.add_argument("--posterior-json", type=Path, default=None,
+                    help="if --refit is set, write the resulting quality_posterior rows to "
+                         "this JSON path (write-only snapshot; posteriors are always "
+                         "recomputed fresh from the full accumulated signal set)")
     args = ap.parse_args(argv)
 
     if args.fixtures is not None and not args.fixtures.is_dir():
@@ -349,8 +365,16 @@ def ingest_main(argv: list[str] | None = None) -> int:
         connectors = build_live_connectors(args.category, sources=tuple(args.sources or ("reddit",)))
     else:
         connectors = _connectors_from_dir(args.fixtures, args.category)
+
     sink = InMemorySink()
-    stats, written = run_ingest(connectors, build_demo_registry(), extractor, sink, refit=args.refit)
+    if args.signal_store is not None and args.signal_store.exists():
+        # Preload via write() (not a raw list assignment) so its dedup _seen set
+        # stays consistent with the rows already on disk.
+        sink.write(signal_rows_from_json(args.signal_store.read_text()))
+
+    posterior_sink = InMemoryPosteriorSink()
+    stats, written = run_ingest(connectors, build_demo_registry(), extractor, sink,
+                                refit=args.refit, posterior_sink=posterior_sink)
 
     print(f"qil-ingest: fetched={stats.fetched} matched={stats.matched} "
           f"unmatched={stats.unmatched} written={stats.written}")
@@ -359,8 +383,14 @@ def ingest_main(argv: list[str] | None = None) -> int:
               f"signal_type={row.signal_type:11s} quality_dim={str(row.quality_dim):17s} "
               f"conf={row.model_confidence:.2f}")
     if args.refit:
-        print(f"refit: wrote {written} posteriors (parameters only)")
+        print(f"refit: wrote {written} posteriors (parameters only, over "
+              f"{len(sink.rows)} accumulated signals)")
     print("NOTE: no raw scraped text persisted -- only normalized product_signal rows.")
+
+    if args.signal_store is not None:
+        args.signal_store.write_text(signal_rows_to_json(sink.rows))
+    if args.refit and args.posterior_json is not None:
+        args.posterior_json.write_text(posterior_rows_to_json(posterior_sink.rows.values()))
     return 0
 
 

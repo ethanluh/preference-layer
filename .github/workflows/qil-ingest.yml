@@ -10,6 +10,13 @@ name: QIL Daily Ingest (B1)
 # subreddit watermark warm via actions/cache so repeated runs only pull new
 # posts instead of re-fetching the same top-100 page (qil/cli.py
 # _bump_watermark).
+#
+# Accumulated product_signal rows persist across runs the same way, via
+# --signal-store (qil/ingest/pipeline.py signal_rows_to/from_json), and both
+# the accumulated signals and each run's fresh posteriors are uploaded as a
+# workflow artifact -- a JSON-file stopgap before a real Postgres (B4), not a
+# replacement for it. Artifacts expire per retention-days below; download and
+# import into a real DB before then if you want to keep the history.
 
 on:
   schedule:
@@ -45,15 +52,33 @@ jobs:
           restore-keys: |
             qil-arctic-shift-watermark-
 
+      - name: Restore accumulated product_signal store
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/qil_signals_laptops.json
+            data/qil_signals_keyboards.json
+          key: qil-signal-store-${{ github.run_id }}
+          restore-keys: |
+            qil-signal-store-
+
       - name: Ingest laptops
         env:
           REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
-        run: qil-ingest --live --source reddit-arctic-shift --category laptops --refit
+        run: |
+          mkdir -p data
+          qil-ingest --live --source reddit-arctic-shift --category laptops --refit \
+            --signal-store data/qil_signals_laptops.json \
+            --posterior-json data/qil_posteriors_laptops.json
 
       - name: Ingest keyboards
         env:
           REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
-        run: qil-ingest --live --source reddit-arctic-shift --category keyboards --refit
+        run: |
+          mkdir -p data
+          qil-ingest --live --source reddit-arctic-shift --category keyboards --refit \
+            --signal-store data/qil_signals_keyboards.json \
+            --posterior-json data/qil_posteriors_keyboards.json
 
       - name: Save watermark for next run
         if: always()
@@ -61,3 +86,20 @@ jobs:
         with:
           path: .qil_arctic_shift_watermark.json
           key: qil-arctic-shift-watermark-${{ github.run_id }}
+
+      - name: Save accumulated product_signal store for next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/qil_signals_laptops.json
+            data/qil_signals_keyboards.json
+          key: qil-signal-store-${{ github.run_id }}
+
+      - name: Upload today's snapshot as a build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qil-daily-snapshot-${{ github.run_id }}
+          path: data/*.json
+          retention-days: 14

@@ -136,6 +136,61 @@ def test_ingest_main_refit_flag(tmp_path, capsys):
     assert "refit: wrote" in capsys.readouterr().out
 
 
+def test_ingest_main_signal_store_accumulates_across_runs(tmp_path, capsys):
+    store = tmp_path / "signals.json"
+
+    day1_dir = tmp_path / "day1"
+    day1_dir.mkdir()
+    (day1_dir / "reddit_sample.json").write_text(json.dumps([{
+        "source_local_id": "r1",
+        "text": "The ThinkPad X1 Carbon Gen 12 throttles hard under sustained compile loads.",
+        "source_url": "https://example/r1",
+        "upvote_count": 5,
+    }]))
+    assert ingest_main(["--fixtures", str(day1_dir), "--signal-store", str(store)]) == 0
+    assert store.exists()
+    stored = json.loads(store.read_text())
+    assert len(stored) == 1
+
+    day2_dir = tmp_path / "day2"
+    day2_dir.mkdir()
+    (day2_dir / "reddit_sample.json").write_text(json.dumps([{
+        "source_local_id": "r2",
+        "text": "Dell XPS 15 9530 travel commute lightweight battery lasts all day reliable.",
+        "source_url": "https://example/r2",
+        "upvote_count": 3,
+    }]))
+    assert ingest_main(["--fixtures", str(day2_dir), "--signal-store", str(store)]) == 0
+    out = capsys.readouterr().out
+    assert "fetched=1" in out  # only day 2's new document, not the accumulated total
+    stored = json.loads(store.read_text())
+    assert len(stored) == 2  # day 1's row survived alongside day 2's
+
+
+def test_ingest_main_refit_over_accumulated_store_and_posterior_json(tmp_path, capsys):
+    store = tmp_path / "signals.json"
+    posteriors = tmp_path / "posteriors.json"
+    fixture_dir = tmp_path / "fixtures"
+    fixture_dir.mkdir()
+    (fixture_dir / "reddit_sample.json").write_text(json.dumps([{
+        "source_local_id": "r1",
+        "text": "Dell XPS 15 9530 battery degrades after heavy travel use.",
+        "source_url": "https://example/r1",
+        "upvote_count": 9,
+    }]))
+    rc = ingest_main([
+        "--fixtures", str(fixture_dir), "--refit",
+        "--signal-store", str(store), "--posterior-json", str(posteriors),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "refit: wrote" in out
+    assert "accumulated signals" in out
+    assert posteriors.exists()
+    rows = json.loads(posteriors.read_text())
+    assert isinstance(rows, list)
+
+
 # --- live ingestion wiring (B1) --------------------------------------------
 
 _REDDIT_ENV = {

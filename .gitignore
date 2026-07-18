@@ -63,6 +63,8 @@ logs/
 
 # QIL runtime state (per-operator, not source)
 .qil_arctic_shift_watermark.json
+data/qil_signals_*.json
+data/qil_posteriors_*.json
 
 # Claude Code agent worktrees (transient, per-session)
 .claude/worktrees/
