@@ -54,6 +54,38 @@ def test_registry_respects_category_filter():
     assert reg.match("dell xps 15 9530", category="keyboards") is None
 
 
+def test_registry_rejects_generic_token_false_match_on_short_alias():
+    # Real false positive observed in a production ingest run (2026-07-18): a
+    # German-language post about a Samsung Galaxy Book 4 -- no Dell/XPS mention
+    # anywhere -- matched dell-xps-15-9530 via the "xps 15" alias, because its
+    # 2-token signature {xps, 15} hit the containment threshold on "15" alone
+    # (from the post's "15,6\"" screen size), with "xps" absent entirely.
+    reg = ProductRegistry(threshold=0.5).add(
+        CanonicalProduct("dell-xps-15-9530", "laptops", "Dell XPS 15 9530",
+                         aliases=("dell xps 15 9530", "xps 15 9530", "xps 15"))
+    )
+    text = (
+        "Sind 600 Euro ein guter Deal fur das Samsung Galaxy Book 4? "
+        "Ich bin auf der Suche nach einem soliden Laptop fur die Uni. "
+        "Samsung Galaxy Book4 (15,6\", i7, 16 GB, Intel Iris Xe), "
+        "Intel Core i7, 1,7 GHz, 39,6 cm (15.6\"), 1920 x 1080 Pixel, "
+        "16 GB, 512 GB fur 599 Euro."
+    )
+    assert reg.match(text, category="laptops") is None
+
+
+def test_registry_still_matches_short_alias_when_both_tokens_present():
+    # The fix must not make short aliases unmatchable outright -- both tokens of
+    # "xps 15" present is still a legitimate match.
+    reg = ProductRegistry(threshold=0.5).add(
+        CanonicalProduct("dell-xps-15-9530", "laptops", "Dell XPS 15 9530",
+                         aliases=("dell xps 15 9530", "xps 15 9530", "xps 15"))
+    )
+    hit = reg.match("just got the new xps 15, loving it so far", category="laptops")
+    assert hit is not None
+    assert hit[0].product_id == "dell-xps-15-9530"
+
+
 # --- politeness -----------------------------------------------------------
 
 def test_robots_disallow_and_allow_override():
