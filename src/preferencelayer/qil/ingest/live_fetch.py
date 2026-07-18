@@ -113,8 +113,88 @@ def make_reddit_fetch(
 
 
 # --------------------------------------------------------------------------- #
-# iFixit / Notebookcheck: polite HTTP GET
+# Arctic Shift: unauthenticated Reddit archive mirror (fallback when Reddit's
+# own OAuth app-approval is unavailable/rejected -- see docs/data-source-strategy.md)
 # --------------------------------------------------------------------------- #
+
+_ARCTIC_SHIFT_BASE_URL = "https://arctic-shift.photon-reddit.com"
+
+
+def make_arctic_shift_fetch(
+    user_agent: str,
+    *,
+    base_url: str = _ARCTIC_SHIFT_BASE_URL,
+    http: _Transport | None = None,
+    limit: int = 100,
+    sort: str = "desc",
+    timeout: float = 15.0,
+    after_utc: Callable[[str], int | None] | None = None,
+    on_records: Callable[[str, list], None] | None = None,
+) -> Callable[[str], Any]:
+    """Build a ``fetch(url) -> listing JSON`` for ``RedditConnector`` backed by
+    Arctic Shift (https://arctic-shift.photon-reddit.com), a community-run,
+    unauthenticated mirror of Reddit's archived post data.
+
+    Drop-in alternative to :func:`make_reddit_fetch` for when Reddit's own OAuth
+    app approval is unavailable or rejected (as of 2026 Reddit requires manual,
+    unpredictable review for new API clients). No client_id/secret/token
+    handshake -- just an HTTP GET with a ``User-Agent``.
+
+    ``RedditConnector._page_urls`` yields ``https://oauth.reddit.com/r/{sub}/new``
+    URLs; this fetch extracts ``{sub}`` from that URL, queries Arctic Shift's
+    ``/api/posts/search`` for that subreddit, and reshapes the result into the
+    same ``{"data": {"children": [{"data": {...}}, ...]}}`` listing shape
+    ``RedditConnector._parse`` already understands -- no connector changes needed.
+    Verified against a live call: records use the same field names
+    ``RedditConnector._parse`` reads (``id``/``title``/``selftext``/``score``/
+    ``permalink``), so no reshaping beyond the envelope is needed. ``sort`` takes
+    Arctic Shift's own vocabulary (``asc``/``desc`` by ``created_utc``), not
+    Reddit's ``new``/``top`` -- ``"desc"`` (default) is newest-first.
+
+    Incremental fetching (so a daily cron doesn't re-pull the same top-``limit``
+    posts every run): pass ``after_utc(subreddit) -> created_utc | None`` to add
+    Arctic Shift's ``after=`` cursor (confirmed live to filter by
+    ``created_utc``), and ``on_records(subreddit, records)`` to observe the raw
+    records for the caller to persist a new watermark. Both are optional --
+    without them this behaves like a plain top-``limit`` fetch every call. State
+    (where the watermark is stored) is the caller's concern, not this function's.
+
+    Caveat (see docs/data-source-strategy.md): Arctic Shift is a volunteer-run
+    third-party mirror, not a Reddit-sanctioned API -- fine for research-stage
+    ingestion, but needs the same scrutiny as Reddit's own commercial licensing
+    gate before any commercial use.
+    """
+    if not user_agent:
+        raise ValueError("Arctic Shift fetch needs a user_agent")
+    transport = http or _default_transport()
+
+    def fetch(url: str) -> Any:
+        subreddit = _subreddit_from_reddit_url(url)
+        search_url = (
+            f"{base_url}/api/posts/search"
+            f"?subreddit={subreddit}&sort={sort}&limit={limit}"
+        )
+        since = after_utc(subreddit) if after_utc is not None else None
+        if since is not None:
+            search_url += f"&after={since}"
+        resp = transport.get(search_url, headers={"User-Agent": user_agent}, timeout=timeout)
+        resp.raise_for_status()
+        payload = resp.json()
+        records = payload.get("data", payload) if isinstance(payload, dict) else payload
+        if on_records is not None:
+            on_records(subreddit, records)
+        return {"data": {"children": [{"data": rec} for rec in records]}}
+
+    return fetch
+
+
+def _subreddit_from_reddit_url(url: str) -> str:
+    """Extract the subreddit name from a ``.../r/{sub}/...`` listing URL."""
+    parts = url.split("/r/", 1)
+    if len(parts) != 2 or not parts[1]:
+        raise ValueError(f"Arctic Shift fetch: cannot find '/r/{{subreddit}}/' in {url!r}")
+    return parts[1].split("/", 1)[0]
+
 
 def make_http_fetch(
     *,

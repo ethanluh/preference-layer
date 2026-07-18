@@ -43,6 +43,7 @@ from .ingest import (
     RateLimiter,
     ProductSignalRow,
     RedditConnector,
+    make_arctic_shift_fetch,
     make_http_fetch,
     make_reddit_fetch,
     run_daily,
@@ -112,6 +113,12 @@ def build_demo_registry() -> ProductRegistry:
     ).add(
         CanonicalProduct("dell-xps-15-9530", "laptops", "Dell XPS 15 9530",
                          aliases=("dell xps 15 9530", "xps 15 9530", "xps 15"))
+    ).add(
+        CanonicalProduct("glorious-gmmk-3-pro", "keyboards", "Glorious GMMK 3 Pro",
+                         aliases=("gmmk 3 pro", "gmmk3 pro", "gmmk 3", "gmmk3"))
+    ).add(
+        CanonicalProduct("keychron-q1-pro", "keyboards", "Keychron Q1 Pro",
+                         aliases=("keychron q1", "keychron q1 pro", "q1 pro"))
     )
 
 
@@ -213,6 +220,31 @@ _LIVE_IFIXIT_URLS = {
     "keyboards": ("https://www.ifixit.com/api/2.0/guides?category=Keyboard",),
 }
 
+# Per-subreddit created_utc watermark for the Arctic Shift fallback, so a daily
+# run only pulls posts newer than the last run instead of re-fetching the same
+# top-`limit` page every time (dedup via content_hash makes this an efficiency
+# fix, not a correctness one).
+_DEFAULT_WATERMARK_PATH = Path(".qil_arctic_shift_watermark.json")
+
+
+def _watermark_path() -> Path:
+    return Path(os.environ.get("QIL_ARCTIC_SHIFT_WATERMARK_PATH", _DEFAULT_WATERMARK_PATH))
+
+
+def _load_watermarks(path: Path) -> dict[str, int]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
+
+
+def _bump_watermark(subreddit: str, records: list, watermarks: dict[str, int]) -> None:
+    seen = [rec.get("created_utc") for rec in records if isinstance(rec, dict)]
+    seen = [ts for ts in seen if isinstance(ts, (int, float))]
+    if not seen:
+        return
+    watermarks[subreddit] = max(watermarks.get(subreddit, 0), int(max(seen)))
+    _watermark_path().write_text(json.dumps(watermarks))
+
 
 def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit",),
                           rate: float = 1.0) -> list:
@@ -230,6 +262,11 @@ def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit"
     and tested, but not crawled by default). Opt iFixit in explicitly with
     ``sources=("reddit", "ifixit")``.
 
+    ``"reddit-arctic-shift"`` is a fallback wired the same way as ``"reddit"`` but
+    via ``make_arctic_shift_fetch`` (no OAuth client_id/secret needed) -- for when
+    Reddit's own app-approval process is unavailable or rejects the application
+    (see docs/data-source-strategy.md). Only needs ``REDDIT_USER_AGENT``.
+
     Notebookcheck is never auto-wired: it has no JSON API and needs a site-specific
     HTML->records parser (inject one via ``make_http_fetch(parser=...)`` +
     ``NotebookcheckConnector``).
@@ -237,18 +274,35 @@ def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit"
     user_agent = os.environ.get("REDDIT_USER_AGENT")
     client_id = os.environ.get("REDDIT_CLIENT_ID")
     client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
-    if not (user_agent and client_id and client_secret):
-        raise SystemExit(
-            "qil-ingest --live: missing Reddit credentials. Set REDDIT_CLIENT_ID, "
-            "REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT in the environment."
-        )
 
     connectors: list = []
     if "reddit" in sources:
+        if not (user_agent and client_id and client_secret):
+            raise SystemExit(
+                "qil-ingest --live: missing Reddit credentials. Set REDDIT_CLIENT_ID, "
+                "REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT in the environment, or use "
+                "--source reddit-arctic-shift if Reddit's OAuth app approval is unavailable."
+            )
         reddit_fetch = make_reddit_fetch(client_id, client_secret, user_agent)
         connectors.append(RedditConnector(
             category, list(_LIVE_SUBREDDITS.get(category, ())),
             fetch=reddit_fetch, rate_limiter=RateLimiter(rate=rate),
+        ))
+    if "reddit-arctic-shift" in sources:
+        if not user_agent:
+            raise SystemExit(
+                "qil-ingest --live: missing REDDIT_USER_AGENT (Arctic Shift still "
+                "expects a descriptive User-Agent, even without OAuth credentials)."
+            )
+        watermarks = _load_watermarks(_watermark_path())
+        arctic_shift_fetch = make_arctic_shift_fetch(
+            user_agent,
+            after_utc=watermarks.get,
+            on_records=lambda sub, records: _bump_watermark(sub, records, watermarks),
+        )
+        connectors.append(RedditConnector(
+            category, list(_LIVE_SUBREDDITS.get(category, ())),
+            fetch=arctic_shift_fetch, rate_limiter=RateLimiter(rate=rate),
         ))
     if "ifixit" in sources:
         # Parked by default; only wired when explicitly requested.
@@ -271,9 +325,13 @@ def ingest_main(argv: list[str] | None = None) -> int:
     src.add_argument("--live", action="store_true",
                      help="ingest from live sources using credentials in the environment "
                           "(REDDIT_CLIENT_ID/SECRET/USER_AGENT); see build_live_connectors")
-    ap.add_argument("--source", action="append", choices=["reddit", "ifixit"], dest="sources",
+    ap.add_argument("--source", action="append",
+                    choices=["reddit", "reddit-arctic-shift", "ifixit"], dest="sources",
                     help="live source to wire (repeatable; default: reddit only). iFixit is "
-                         "parked by default -- pass --source ifixit to opt in. Only used with --live.")
+                         "parked by default -- pass --source ifixit to opt in. Use "
+                         "reddit-arctic-shift instead of reddit if Reddit's OAuth app "
+                         "approval is unavailable/rejected (no client_id/secret needed). "
+                         "Only used with --live.")
     ap.add_argument("--category", default="laptops", help="product category (default: laptops)")
     ap.add_argument("--refit", action="store_true",
                     help="after ingest, run the posterior refit end-to-end and report counts")

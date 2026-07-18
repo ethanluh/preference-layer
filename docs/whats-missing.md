@@ -59,6 +59,15 @@ The code seams exist; these need a resource only the operator can supply.
    (retained + tested, not crawled by default). *Needs:* Reddit API credentials
    (`REDDIT_CLIENT_ID/SECRET/USER_AGENT`) + a host to run the daily job. Reddit
    commercial licensing must be priced before any sale (#47).
+   **Update (2026-07-17):** the official Reddit OAuth application was
+   **rejected** (Reddit closed self-service registration in 2026). A fallback,
+   `make_arctic_shift_fetch` (unauthenticated, via the Arctic Shift community
+   mirror), is now wired and verified against live traffic —
+   `qil-ingest --live --source reddit-arctic-shift` needs only
+   `REDDIT_USER_AGENT`, no client_id/secret. This unblocks running live ingestion
+   now; it does not resolve Reddit's commercial-licensing question (see
+   [data-source-strategy.md](data-source-strategy.md)), and a host to run the
+   daily job is still needed either way.
 2. **B2 — precision on real text (the gate-behind-the-gate).** Must reach **≥70%
    use-profile precision on real scraped text** (the 88.3% was a synthetic corpus).
    The transformer fine-tune and the real-annotated-corpus loader are scaffolded in
