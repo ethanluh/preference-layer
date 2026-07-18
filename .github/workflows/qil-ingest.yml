@@ -1,0 +1,63 @@
+name: QIL Daily Ingest (B1)
+
+# Runs the QIL live ingest -> extract -> refit pipeline daily, per the
+# recommended production setup in qil/cli.py (a cron entry invoking
+# qil-ingest). Uses the Arctic Shift fallback (docs/data-source-strategy.md)
+# since it needs only REDDIT_USER_AGENT, no OAuth client_id/secret.
+#
+# Runs in-process, not against a live Postgres (B4 still needs that) -- this
+# exercises the real ingest/extract/refit path daily and keeps the per-
+# subreddit watermark warm via actions/cache so repeated runs only pull new
+# posts instead of re-fetching the same top-100 page (qil/cli.py
+# _bump_watermark).
+
+on:
+  schedule:
+    - cron: "30 3 * * *"  # 03:30 UTC daily
+  workflow_dispatch: {}
+
+concurrency:
+  group: qil-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install requests  # transport for live_fetch's make_arctic_shift_fetch
+
+      - name: Restore watermark (last run's per-subreddit created_utc cursor)
+        uses: actions/cache/restore@v4
+        with:
+          path: .qil_arctic_shift_watermark.json
+          key: qil-arctic-shift-watermark-${{ github.run_id }}
+          restore-keys: |
+            qil-arctic-shift-watermark-
+
+      - name: Ingest laptops
+        env:
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+        run: qil-ingest --live --source reddit-arctic-shift --category laptops --refit
+
+      - name: Ingest keyboards
+        env:
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+        run: qil-ingest --live --source reddit-arctic-shift --category keyboards --refit
+
+      - name: Save watermark for next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .qil_arctic_shift_watermark.json
+          key: qil-arctic-shift-watermark-${{ github.run_id }}
