@@ -23,7 +23,34 @@ if ! printf '%s' "$command" | grep -qE 'gh pr (create|edit)'; then
   exit 0
 fi
 
-if printf '%s' "$command" | grep -qP '<!--\s*declared-direction:\s*\S.*-->'; then
+# --body-file points at a file whose *content* carries the marker, not the
+# command line itself -- read it so that case is checked too. Portable bash
+# parameter expansion (not grep -P, which isn't available under BSD/macOS
+# grep, only the interactive shell's aliased ugrep) so this works wherever
+# the hook actually runs.
+body_file=""
+if [[ "$command" == *--body-file* ]]; then
+  rest="${command#*--body-file}"
+  rest="${rest#"${rest%%[![:space:]]*}"}"  # strip leading whitespace
+  first_char="${rest:0:1}"
+  if [[ "$first_char" == '"' || "$first_char" == "'" ]]; then
+    body_file="${rest#?}"
+    body_file="${body_file%%["$first_char"]*}"
+  else
+    body_file="${rest%%[[:space:]]*}"
+  fi
+fi
+
+body_content=""
+if [[ -n "$body_file" && -f "$body_file" ]]; then
+  body_content="$(cat "$body_file" 2>/dev/null || true)"
+fi
+
+haystack="$command"$'\n'"$body_content"
+
+# Portable ERE (works under BSD grep, no -P/PCRE needed): require the marker,
+# a colon, and at least one non-whitespace character before the closing "-->".
+if printf '%s' "$haystack" | grep -qE '<!--[[:space:]]*declared-direction:[[:space:]]*[^[:space:]].*-->'; then
   exit 0
 fi
 
