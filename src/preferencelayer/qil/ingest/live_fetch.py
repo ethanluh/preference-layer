@@ -17,9 +17,8 @@ later step, gated on a proven data gap after Reddit + retailer return data.
 
 The HTTP transport is injectable (``http=``) so the OAuth handshake, header
 assembly, and crawl-delay pacing are unit-tested against a fake transport with no
-network. ``requests`` is an optional dependency (the ``[amazon]``/HTTP extras
-already pull it in for other paths); it is imported lazily only when no transport
-is injected.
+network. ``requests`` is an optional dependency (the ``[ingest]`` extra); it is
+imported lazily only when no transport is injected.
 
 Pacing note: steady-state rate limiting is the connector's job (it calls
 ``RateLimiter.acquire`` + ``RobotsPolicy.can_fetch`` before each fetch). The

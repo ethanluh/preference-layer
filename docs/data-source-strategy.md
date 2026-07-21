@@ -28,27 +28,30 @@ deliberate sequencing decision, not "wire everything we can."
   Builder Policy" review); a legitimate research-use application was **rejected**
   with no actionable reason given. Reapplying with a tighter use-case description
   remains worth trying in parallel, but has no reliable timeline.
-- **Fallback wired now:** `make_arctic_shift_fetch`
+- **Wired now, and the default access path:** `make_arctic_shift_fetch`
   (`src/preferencelayer/qil/ingest/live_fetch.py`) hits
   [Arctic Shift](https://arctic-shift.photon-reddit.com/), a community-run,
   unauthenticated mirror of Reddit's archived post data. No client_id/secret —
   only a `User-Agent`. Verified against a live call: same field names
   (`id`/`title`/`selftext`/`score`/`permalink`) as the official API, so it drops
-  into `RedditConnector` unchanged. Select it with
-  `qil-ingest --live --source reddit-arctic-shift` in place of `--source reddit`.
+  into `RedditConnector` unchanged. `build_live_connectors`/`qil-ingest --live`
+  now default to `reddit-arctic-shift` (no `--source` flag needed); the official
+  OAuth path is still selectable with `--source reddit` for accounts with an
+  approved app.
 - **Caveat:** Arctic Shift is a volunteer-run third-party mirror, not
   Reddit-sanctioned — its own legality rests on Reddit tolerating it. Fine for
   research-stage prototyping now; needs the **same commercial-licensing scrutiny
   as the official API** (probably more, since it has no license of its own)
   before any commercial use — do not treat it as a way to route around Reddit's
   commercial terms.
-- This is an access-path fallback, not a change to source selection: Reddit
+- This is an access-path decision, not a change to source selection: Reddit
   (via whichever access path is live) remains the only source wired by default.
 
 ### iFixit + Notebookcheck — parked
 - Their connectors and parsers are **retained and tested** (`qil/ingest/connectors.py`),
-  but **not crawled by default**: `build_live_connectors` defaults to Reddit only,
-  and iFixit is explicit opt-in (`qil-ingest --live --source ifixit`).
+  but **not crawled by default**: `build_live_connectors` defaults to Reddit
+  (via Arctic Shift) only, and iFixit is explicit opt-in
+  (`qil-ingest --live --source ifixit`).
 - **Do not** send permission/key/ToS outreach now. They are only worth the
   negotiation if **Reddit + retailer return data leave a specific, proven gap**.
   Revisiting them is a deliberate later step, not a default.
@@ -82,9 +85,10 @@ deliberate sequencing decision, not "wire everything we can."
 ## Operator actions (not code)
 
 - Reddit: confirm research-tier terms for current use; get a commercial-license
-  quote before the first paid deployment (#47). If reapplying for official OAuth
-  access, use `--source reddit-arctic-shift` as the working fallback in the
-  meantime (see above) rather than blocking on approval.
+  quote before the first paid deployment (#47). Arctic Shift is the default
+  access path (see above) while the official OAuth app reapplication (if
+  pursued) has no reliable timeline; `--source reddit` remains available once
+  approved.
 - Retailer: begin outreach to 3–5 mid-size retailers; drive the agreement through
   legal and ratify the schema (#48, #14).
 - iFixit/Notebookcheck: **no action** — parked.

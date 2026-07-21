@@ -201,16 +201,18 @@ _REDDIT_ENV = {
 
 
 def test_build_live_connectors_requires_credentials(monkeypatch):
+    # Default source is now reddit-arctic-shift, which only needs REDDIT_USER_AGENT.
     for key in _REDDIT_ENV:
         monkeypatch.delenv(key, raising=False)
     with pytest.raises(SystemExit) as exc:
         build_live_connectors("laptops")
-    assert "REDDIT_CLIENT_ID" in str(exc.value)
+    assert "REDDIT_USER_AGENT" in str(exc.value)
 
 
-def test_build_live_connectors_defaults_to_reddit_only(monkeypatch):
-    # Data-source strategy: Reddit is the only source wired by default; iFixit is
-    # parked (its connector is retained but not crawled unless explicitly opted in).
+def test_build_live_connectors_defaults_to_arctic_shift_only(monkeypatch):
+    # Data-source strategy: Arctic Shift is the default access path (Reddit closed
+    # self-service OAuth app registration in 2026); iFixit is parked (its connector
+    # is retained but not crawled unless explicitly opted in).
     for key, val in _REDDIT_ENV.items():
         monkeypatch.setenv(key, val)
     connectors = build_live_connectors("laptops")
@@ -222,14 +224,33 @@ def test_build_live_connectors_defaults_to_reddit_only(monkeypatch):
 def test_build_live_connectors_opts_in_ifixit_explicitly(monkeypatch):
     for key, val in _REDDIT_ENV.items():
         monkeypatch.setenv(key, val)
-    connectors = build_live_connectors("laptops", sources=("reddit", "ifixit"))
+    connectors = build_live_connectors("laptops", sources=("reddit-arctic-shift", "ifixit"))
     types = {type(c) for c in connectors}
     assert types == {RedditConnector, IFixitConnector}
     assert all(c._fetch is not None for c in connectors)
 
 
+def test_build_live_connectors_reddit_oauth_still_available(monkeypatch):
+    # The official OAuth path remains selectable for accounts with an approved app.
+    for key, val in _REDDIT_ENV.items():
+        monkeypatch.setenv(key, val)
+    connectors = build_live_connectors("laptops", sources=("reddit",))
+    types = {type(c) for c in connectors}
+    assert types == {RedditConnector}
+    assert all(c._fetch is not None for c in connectors)
+
+
+def test_build_live_connectors_reddit_oauth_requires_credentials(monkeypatch):
+    monkeypatch.setenv("REDDIT_USER_AGENT", "pref-bot/0.1")
+    monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
+    monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
+    with pytest.raises(SystemExit) as exc:
+        build_live_connectors("laptops", sources=("reddit",))
+    assert "REDDIT_CLIENT_ID" in str(exc.value)
+
+
 def test_build_live_connectors_arctic_shift_needs_only_user_agent(monkeypatch):
-    # Fallback path (docs/data-source-strategy.md): no OAuth client_id/secret.
+    # Default access path (docs/data-source-strategy.md): no OAuth client_id/secret.
     monkeypatch.delenv("REDDIT_CLIENT_ID", raising=False)
     monkeypatch.delenv("REDDIT_CLIENT_SECRET", raising=False)
     monkeypatch.setenv("REDDIT_USER_AGENT", "pref-bot/0.1")

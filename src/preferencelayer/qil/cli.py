@@ -253,26 +253,26 @@ def _bump_watermark(subreddit: str, records: list, watermarks: dict[str, int]) -
     _watermark_path().write_text(json.dumps(watermarks))
 
 
-def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit",),
+def build_live_connectors(category: str, *, sources: tuple[str, ...] = ("reddit-arctic-shift",),
                           rate: float = 1.0) -> list:
     """Assemble live connectors from environment credentials.
 
-    Reads ``REDDIT_CLIENT_ID`` / ``REDDIT_CLIENT_SECRET`` / ``REDDIT_USER_AGENT``;
-    injects the real ``fetch`` callables (``live_fetch``) and a token-bucket
-    ``RateLimiter`` into the existing connectors. Raises ``SystemExit`` with a
-    clear message when Reddit credentials are absent.
+    Injects the real ``fetch`` callables (``live_fetch``) and a token-bucket
+    ``RateLimiter`` into the existing connectors.
 
-    ``sources`` selects which sources to wire. **Default: Reddit only** -- per the
-    data-source strategy (``docs/data-source-strategy.md``), Reddit runs on the
-    research/free tier (research-stage) and is the only source wired by default;
-    iFixit and Notebookcheck are **parked** (their connectors/parsers are retained
-    and tested, but not crawled by default). Opt iFixit in explicitly with
-    ``sources=("reddit", "ifixit")``.
+    ``sources`` selects which sources to wire. **Default: Arctic Shift** -- per the
+    data-source strategy (``docs/data-source-strategy.md``), Reddit closed
+    self-service OAuth app registration in 2026, so Arctic Shift (an unauthenticated
+    community-run mirror of Reddit's archived post data, via
+    ``make_arctic_shift_fetch``) is the default access path; it only needs
+    ``REDDIT_USER_AGENT``. iFixit and Notebookcheck are **parked** (their
+    connectors/parsers are retained and tested, but not crawled by default). Opt
+    iFixit in explicitly with ``sources=("reddit-arctic-shift", "ifixit")``.
 
-    ``"reddit-arctic-shift"`` is a fallback wired the same way as ``"reddit"`` but
-    via ``make_arctic_shift_fetch`` (no OAuth client_id/secret needed) -- for when
-    Reddit's own app-approval process is unavailable or rejects the application
-    (see docs/data-source-strategy.md). Only needs ``REDDIT_USER_AGENT``.
+    ``"reddit"`` (official OAuth API) is still available for accounts with an
+    approved app -- reads ``REDDIT_CLIENT_ID``/``REDDIT_CLIENT_SECRET`` in addition
+    to ``REDDIT_USER_AGENT``, and raises ``SystemExit`` with a clear message when
+    those credentials are absent.
 
     Notebookcheck is never auto-wired: it has no JSON API and needs a site-specific
     HTML->records parser (inject one via ``make_http_fetch(parser=...)`` +
@@ -331,14 +331,14 @@ def ingest_main(argv: list[str] | None = None) -> int:
                      help="directory of *.json source fixtures (one connector per file)")
     src.add_argument("--live", action="store_true",
                      help="ingest from live sources using credentials in the environment "
-                          "(REDDIT_CLIENT_ID/SECRET/USER_AGENT); see build_live_connectors")
+                          "(REDDIT_USER_AGENT; see build_live_connectors)")
     ap.add_argument("--source", action="append",
                     choices=["reddit", "reddit-arctic-shift", "ifixit"], dest="sources",
-                    help="live source to wire (repeatable; default: reddit only). iFixit is "
-                         "parked by default -- pass --source ifixit to opt in. Use "
-                         "reddit-arctic-shift instead of reddit if Reddit's OAuth app "
-                         "approval is unavailable/rejected (no client_id/secret needed). "
-                         "Only used with --live.")
+                    help="live source to wire (repeatable; default: reddit-arctic-shift only). "
+                         "iFixit is parked by default -- pass --source ifixit to opt in. Use "
+                         "reddit instead of reddit-arctic-shift if you have an approved Reddit "
+                         "OAuth app (needs REDDIT_CLIENT_ID/SECRET in addition to "
+                         "REDDIT_USER_AGENT). Only used with --live.")
     ap.add_argument("--category", default="laptops", help="product category (default: laptops)")
     ap.add_argument("--refit", action="store_true",
                     help="after ingest, run the posterior refit end-to-end and report counts")
@@ -362,7 +362,9 @@ def ingest_main(argv: list[str] | None = None) -> int:
     extractor = QILExtractor().fit(corpus.train)
 
     if args.live:
-        connectors = build_live_connectors(args.category, sources=tuple(args.sources or ("reddit",)))
+        connectors = build_live_connectors(
+            args.category, sources=tuple(args.sources or ("reddit-arctic-shift",))
+        )
     else:
         connectors = _connectors_from_dir(args.fixtures, args.category)
 
